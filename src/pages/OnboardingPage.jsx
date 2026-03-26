@@ -57,7 +57,7 @@ export default function OnboardingPage() {
 
           {/* Provider Option */}
           <div 
-            onClick={() => alert('Provider flow coming soon!')}
+            onClick={() => navigate('/provider-dashboard')}
             style={{
               cursor: 'pointer',
               border: '2px solid var(--outline-variant)',
