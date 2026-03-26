@@ -48,9 +48,9 @@ export default function Footer() {
             <p className="footer__bottom-sub">All rights reserved. Designed with precision.</p>
           </div>
           <div>
-            <Link to="/admin" className="btn btn--outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+            <Link to="/admin-login" className="btn btn--outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
               <span className="material-icons" style={{ fontSize: '1rem' }}>admin_panel_settings</span>
-              Admin
+              Admin Portal
             </Link>
           </div>
         </div>
