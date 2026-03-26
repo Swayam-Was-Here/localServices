@@ -35,16 +35,24 @@ const Login = () => {
       // Check if user is a provider
       const { data: provider } = await supabase.from('service_providers').select('id, status').eq('id', userId).maybeSingle();
       if (provider) {
-        if (provider.status === 'pending') {
+        if (provider.status === 'pending' || provider.status === 'rejected') {
            navigate('/pending-approval');
         } else {
            navigate('/provider-dashboard');
         }
         return;
       }
+      // Check if user is an admin just in case they use this login page
+      const { data: admin } = await supabase.from('admin').select('id').eq('id', userId).maybeSingle();
+      if (admin) {
+        navigate('/admin');
+        return;
+      }
       
-      // Default fallback (e.g. for Admin or unknown roles)
-      navigate('/admin'); 
+      // Default fallback (e.g. for unknown roles)
+      await supabase.auth.signOut();
+      setError('Account not found in our records.');
+      setLoading(false);
     }
   };
 

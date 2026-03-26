@@ -12,10 +12,11 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import PendingApproval from './pages/PendingApproval'
 import ProtectedRoute from './components/ProtectedRoute'
+import AdminLogin from './pages/AdminLogin'
 
 function App() {
   const location = useLocation()
-  const noNavFooterRoutes = ['/onboarding', '/dashboard', '/admin', '/provider-dashboard', '/login', '/signup', '/pending-approval']
+  const noNavFooterRoutes = ['/onboarding', '/dashboard', '/admin', '/provider-dashboard', '/login', '/signup', '/pending-approval', '/admin-login']
   const showNavFooter = !noNavFooterRoutes.includes(location.pathname)
 
   return (
@@ -25,9 +26,10 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><CustomerDashboard /></ProtectedRoute>} />
-        <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
         <Route path="/provider-dashboard" element={<ProtectedRoute><ProviderDashboard /></ProtectedRoute>} />
         <Route path="/login" element={<Login />} />
+        <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval /></ProtectedRoute>} />
       </Routes>
