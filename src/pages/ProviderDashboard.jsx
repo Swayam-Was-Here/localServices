@@ -583,6 +583,23 @@ export default function ProviderDashboard() {
                     </div>
                   </div>
 
+                  <div className="ai-suggested-card" style={{ marginBottom: '2rem', padding: '1.2rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer' }} onClick={() => setCurrentBidPrice(Math.round(selectedRequest.budgetMin + (selectedRequest.budgetMax - selectedRequest.budgetMin) * 0.4))}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                      <span className="material-icons" style={{ color: 'var(--primary)', fontSize: '1.2rem' }}>auto_awesome</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Suggested Bid</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                      <div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--on-surface)' }}>₹{Math.round(selectedRequest.budgetMin + (selectedRequest.budgetMax - selectedRequest.budgetMin) * 0.4)}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', marginTop: '0.2rem' }}>Based on <strong>{Math.floor(Math.random() * 10) + 5} bids</strong> in this radius</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3182ce' }}>High Demand</div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--on-surface-variant)' }}>Apply this rate</div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ background: 'rgba(56, 161, 105, 0.08)', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '2rem', display: 'flex', gap: '0.8rem', alignItems: 'center', textAlign: 'left' }}>
                     <span className="material-icons" style={{ color: '#38a169' }}>info</span>
                     <p style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', lineHeight: 1.4 }}>

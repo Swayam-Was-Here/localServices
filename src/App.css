@@ -1474,3 +1474,35 @@
   .dashboard-header { flex-direction: column; gap: var(--space-4); }
   .dashboard-header__actions { width: 100%; justify-content: space-between; }
 }
+
+/* AI SUGGESTION GLOW */
+@keyframes ai-glow-border {
+  0% { box-shadow: 0 0 5px rgba(221, 107, 32, 0.4), inset 0 0 5px rgba(221, 107, 32, 0.2); border-color: rgba(221, 107, 32, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(221, 107, 32, 0.8), inset 0 0 10px rgba(221, 107, 32, 0.4); border-color: rgba(221, 107, 32, 0.8); }
+  100% { box-shadow: 0 0 5px rgba(221, 107, 32, 0.4), inset 0 0 5px rgba(221, 107, 32, 0.2); border-color: rgba(221, 107, 32, 0.4); }
+}
+
+.ai-suggested-card {
+  animation: ai-glow-border 2s infinite ease-in-out;
+  border: 1.5px solid var(--primary);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(221, 107, 32, 0.05) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-suggested-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent, rgba(221, 107, 32, 0.05), transparent);
+  transform: rotate(45deg);
+  animation: shimmer 3s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%) rotate(45deg); }
+  100% { transform: translateX(100%) rotate(45deg); }
+}

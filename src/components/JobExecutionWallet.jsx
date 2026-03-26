@@ -1,21 +1,10 @@
 import { useState, useEffect } from 'react'
 
-const CHECKLIST = [
-  { id: 1, label: 'Site assessment & client brief', done: true },
-  { id: 2, label: 'Unpack & inspect all equipment', done: true },
-  { id: 3, label: 'Install smart hub & wiring', done: true },
-  { id: 4, label: 'Configure lighting zones', done: false },
-  { id: 5, label: 'Connect HVAC & thermostat', done: false },
-  { id: 6, label: 'Test all automations end-to-end', done: false },
-  { id: 7, label: 'Client walkthrough & sign-off', done: false },
-]
 
 const MILESTONES = [
   { label: 'Job Accepted', status: 'done', time: '09:00 AM' },
-  { label: 'En Route', status: 'done', time: '09:15 AM' },
-  { label: 'Arrived & Started', status: 'done', time: '09:30 AM' },
-  { label: 'In Progress', status: 'active', time: 'Now' },
-  { label: 'Pending Completion', status: 'upcoming', time: '--' },
+  { label: 'Arrived & Started', status: 'active', time: 'Now' },
+  { label: 'Job Completed', status: 'upcoming', time: '--' },
   { label: 'Payment Released', status: 'upcoming', time: '--' },
 ]
 
@@ -27,30 +16,10 @@ const WALLET_TRANSACTIONS = [
   { label: 'Electrician – Meera', amount: '+₹2,100', time: 'Mar 23', type: 'credit' },
 ]
 
-function useTimer(initial = 5085) {
-  const [seconds, setSeconds] = useState(initial)
-  useEffect(() => {
-    const id = setInterval(() => setSeconds(s => s + 1), 1000)
-    return () => clearInterval(id)
-  }, [])
-  const h = String(Math.floor(seconds / 3600)).padStart(2, '0')
-  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')
-  const s = String(seconds % 60).padStart(2, '0')
-  return `${h}:${m}:${s}`
-}
-
 export default function JobExecutionWallet({ job, onBack }) {
-  const timer = useTimer()
-  const [checklist, setChecklist] = useState(CHECKLIST)
   const [walletBalance] = useState(34450)
   const [pendingEarning] = useState(job?.bidPrice ?? job?.budgetMin ?? 800)
 
-  const doneCount = checklist.filter(c => c.done).length
-  const progress = Math.round((doneCount / checklist.length) * 100)
-
-  const toggleCheck = (id) => {
-    setChecklist(prev => prev.map(c => c.id === id ? { ...c, done: !c.done } : c))
-  }
 
   return (
     <div style={{ display: 'flex', gap: '1.5rem' }}>
@@ -76,13 +45,6 @@ export default function JobExecutionWallet({ job, onBack }) {
               <span className="material-icons" style={{ fontSize: '0.8rem', verticalAlign: 'middle', marginRight: '2px' }}>location_on</span>
               {job?.address ?? 'Sector 21, Gurgaon'} · Bid: ₹{(job?.bidPrice ?? job?.budgetMin ?? 800).toLocaleString()}
             </p>
-          </div>
-          <div style={{
-            marginLeft: 'auto', background: 'linear-gradient(135deg, var(--primary), var(--primary-container))',
-            borderRadius: 'var(--radius-lg)', padding: '0.6rem 1.2rem', textAlign: 'center', flexShrink: 0,
-          }}>
-            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.75)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Duration</div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'white', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.05em' }}>{timer}</div>
           </div>
         </div>
 
@@ -111,52 +73,6 @@ export default function JobExecutionWallet({ job, onBack }) {
           </div>
         </section>
 
-        {/* Service Checklist */}
-        <section style={{
-          background: '#fff', borderRadius: 'var(--radius-xl)', padding: '1.5rem',
-          border: '1px solid var(--outline-variant)', boxShadow: 'var(--shadow-sm)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <span className="material-icons" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}>fact_check</span>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, flex: 1 }}>Service Checklist</h3>
-            <span style={{ fontSize: '0.78rem', color: 'var(--on-surface-variant)', fontWeight: 600 }}>{doneCount}/{checklist.length} done</span>
-          </div>
-
-          {/* Progress bar */}
-          <div style={{ height: '6px', borderRadius: '6px', background: 'var(--outline-variant)', overflow: 'hidden', marginBottom: '1.2rem' }}>
-            <div style={{
-              height: '100%', borderRadius: '6px', background: 'linear-gradient(90deg, var(--primary), #38a169)',
-              width: `${progress}%`, transition: 'width 0.4s ease',
-            }} />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {checklist.map(item => (
-              <div
-                key={item.id}
-                onClick={() => toggleCheck(item.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.8rem',
-                  padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-md)',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                  background: item.done ? 'rgba(56,161,105,0.06)' : 'transparent',
-                  border: item.done ? '1px solid rgba(56,161,105,0.2)' : '1px solid transparent',
-                }}
-              >
-                <span className="material-icons" style={{
-                  color: item.done ? '#38a169' : 'var(--outline-variant)',
-                  fontSize: '1.2rem', transition: 'color 0.2s', flexShrink: 0,
-                }}>
-                  {item.done ? 'check_circle' : 'radio_button_unchecked'}
-                </span>
-                <span style={{
-                  fontSize: '0.85rem', color: item.done ? 'var(--on-surface-variant)' : 'var(--on-surface)',
-                  textDecoration: item.done ? 'line-through' : 'none', transition: 'color 0.2s',
-                }}>{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </section>
 
         {/* Milestone Tracker */}
         <section style={{
