@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import '../App.css'
 import PostRequestFlow from '../components/PostRequestFlow'
 import CustomerJobsFlow from '../components/CustomerJobsFlow'
@@ -35,48 +35,49 @@ const generateMockData = () => {
   };
 
   for (let i = 1; i <= 50; i++) {
-      const fn = firstNames[Math.floor(rand() * firstNames.length)];
-      const ln = lastNames[Math.floor(rand() * lastNames.length)];
-      const roleObj = roles[Math.floor(rand() * roles.length)];
-      const loc = locations[Math.floor(rand() * locations.length)];
-      
-      let rating = 1.0 + rand() * 4.0; 
-      rating = Math.round(rating * 10) / 10;
-      
-      let trustScore = 1.0 + rand() * 9.0;
-      trustScore = Math.round(trustScore * 10) / 10;
+    const fn = firstNames[Math.floor(rand() * firstNames.length)];
+    const ln = lastNames[Math.floor(rand() * lastNames.length)];
+    const roleObj = roles[Math.floor(rand() * roles.length)];
+    const loc = locations[Math.floor(rand() * locations.length)];
 
-      let reviews = Math.floor(rand() * 500) + 1;
+    let rating = 1.0 + rand() * 4.0;
+    rating = Math.round(rating * 10) / 10;
 
-      items.push({
-          id: i,
-          initials: fn.charAt(0) + ln.charAt(0),
-          name: `${fn} ${ln}`,
-          role: roleObj.r,
-          rating,
-          trustScore,
-          reviews,
-          location: loc,
-          color: roleObj.c
-      });
+    let trustScore = 1.0 + rand() * 9.0;
+    trustScore = Math.round(trustScore * 10) / 10;
+
+    let reviews = Math.floor(rand() * 500) + 1;
+
+    items.push({
+      id: i,
+      initials: fn.charAt(0) + ln.charAt(0),
+      name: `${fn} ${ln}`,
+      role: roleObj.r,
+      rating,
+      trustScore,
+      reviews,
+      location: loc,
+      color: roleObj.c
+    });
   }
   // Hardcode index 0 so that "Vikram Singh" on default dashboard matches perfectly
   items[0] = { id: 1, initials: 'VS', name: 'Vikram Singh', role: 'Expert Electrician', rating: 4.9, trustScore: 9.8, reviews: 342, location: 'Sector 21, Gurgaon', color: '#d69e2e' };
-  
+
   // Hardcode a few very low ones specifically so they show up easily when testers search for 1-star
   items[1].rating = 1.2; items[1].trustScore = 2.1;
   items[2].rating = 2.5; items[2].trustScore = 4.3;
   items[3].rating = 3.1; items[3].trustScore = 5.0;
-  
+
   return items;
 }
 
 export default function CustomerDashboard() {
+  const navLocation = useLocation()
   const [activeTab, setActiveTab] = useState('dashboard')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(navLocation.state?.searchQuery || '')
   const [minRating, setMinRating] = useState(0)
   const [minTrustScore, setMinTrustScore] = useState(0)
-  
+
   const [rating, setRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
   const [showPostRequest, setShowPostRequest] = useState(false)
@@ -102,11 +103,11 @@ export default function CustomerDashboard() {
   const filteredProfessionals = allProfessionals.filter(pro => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = pro.name.toLowerCase().includes(query) ||
-           pro.role.toLowerCase().includes(query) ||
-           pro.location.toLowerCase().includes(query);
+      pro.role.toLowerCase().includes(query) ||
+      pro.location.toLowerCase().includes(query);
     const matchesRating = pro.rating >= minRating;
     const matchesTrust = pro.trustScore >= minTrustScore;
-    
+
     return matchesSearch && matchesRating && matchesTrust;
   })
 
@@ -118,7 +119,7 @@ export default function CustomerDashboard() {
           <span className="navbar__logo-icon">◈</span>
           <span>LOCAL<span className="navbar__logo-accent">SERVICES</span></span>
         </div>
-        
+
         <nav className="dashboard-nav">
           {sidebarLinks.map(link => (
             <button
@@ -133,8 +134,8 @@ export default function CustomerDashboard() {
         </nav>
 
         <div className="dashboard-sidebar__bottom">
-          <Link to="/" className="btn btn--outline" style={{width: '100%', padding: '0.5rem', fontSize: '0.8rem'}}>
-            <span className="material-icons" style={{fontSize: '1rem', marginRight: '4px'}}>logout</span> Back to Home
+          <Link to="/" className="btn btn--outline" style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem' }}>
+            <span className="material-icons" style={{ fontSize: '1rem', marginRight: '4px' }}>logout</span> Back to Home
           </Link>
         </div>
       </aside>
@@ -146,25 +147,25 @@ export default function CustomerDashboard() {
             <div>
               <h1 className="dashboard-title">Good Morning, Alex</h1>
               <p className="dashboard-subtitle">
-                <span style={{color: '#dd6b20', marginRight: '6px'}}>🔥</span>
+                <span style={{ color: '#dd6b20', marginRight: '6px' }}>🔥</span>
                 23 helpers available nearby
               </p>
             </div>
-            
+
             <div className="dashboard-header__actions">
               <div className="hero__search-inner" style={{ background: '#fff', border: '1px solid var(--outline-variant)', borderRadius: '24px', padding: '0.3rem 0.5rem' }}>
-                <span className="material-icons" style={{color: 'var(--outline)', paddingLeft: '8px'}}>search</span>
-                <input 
-                  type="text" 
-                  placeholder="Search services, pros, location..." 
+                <span className="material-icons" style={{ color: 'var(--outline)', paddingLeft: '8px' }}>search</span>
+                <input
+                  type="text"
+                  placeholder="Search services, pros, location..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ border: 'none', outline: 'none', padding: '0.3rem', width: '250px' }} 
+                  style={{ border: 'none', outline: 'none', padding: '0.3rem', width: '250px' }}
                 />
                 {searchQuery && (
-                  <span 
-                    className="material-icons" 
-                    style={{color: 'var(--outline)', cursor: 'pointer', fontSize: '1.2rem', paddingRight: '4px'}}
+                  <span
+                    className="material-icons"
+                    style={{ color: 'var(--outline)', cursor: 'pointer', fontSize: '1.2rem', paddingRight: '4px' }}
                     onClick={() => setSearchQuery('')}
                   >
                     close
@@ -178,7 +179,7 @@ export default function CustomerDashboard() {
           {/* Filtering Metrics */}
           <div className="dashboard-header__filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', background: '#fff', padding: '0.8rem 1.5rem', borderRadius: '100px', border: '1px solid var(--outline-variant)', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--on-surface-variant)', width: '110px' }}>Min Rating: {minRating} <span className="material-icons" style={{fontSize: '0.9rem', color: '#d69e2e', verticalAlign: 'middle'}}>star</span></label>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--on-surface-variant)', width: '110px' }}>Min Rating: {minRating} <span className="material-icons" style={{ fontSize: '0.9rem', color: '#d69e2e', verticalAlign: 'middle' }}>star</span></label>
               <input type="range" min="0" max="5" step="0.5" value={minRating} onChange={e => setMinRating(Number(e.target.value))} style={{ width: '120px', cursor: 'pointer' }} />
             </div>
             <div style={{ width: '1px', height: '24px', background: 'var(--outline-variant)' }}></div>
@@ -186,11 +187,11 @@ export default function CustomerDashboard() {
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--on-surface-variant)', width: '140px' }}>Min Trust Score: {minTrustScore}</label>
               <input type="range" min="0" max="10" step="0.5" value={minTrustScore} onChange={e => setMinTrustScore(Number(e.target.value))} style={{ width: '120px', cursor: 'pointer' }} />
             </div>
-            
+
             {isFiltering && (
-              <button 
-                className="btn btn--ghost" 
-                style={{ padding: '0.3rem 0.8rem', fontSize: '0.75rem', height: 'fit-content', marginLeft: 'auto', border: '1px solid var(--outline)' }} 
+              <button
+                className="btn btn--ghost"
+                style={{ padding: '0.3rem 0.8rem', fontSize: '0.75rem', height: 'fit-content', marginLeft: 'auto', border: '1px solid var(--outline)' }}
                 onClick={() => { setSearchQuery(''); setMinRating(0); setMinTrustScore(0); }}
               >
                 Clear Filters
@@ -247,30 +248,30 @@ export default function CustomerDashboard() {
                       )}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <h3 style={{fontSize: '1rem', marginBottom: '0.2rem'}}>{pro.name}</h3>
-                      <p style={{fontSize: '0.75rem', color: 'var(--on-surface-variant)', marginBottom: '0.2rem'}}>{pro.role}</p>
-                      <p style={{fontSize: '0.75rem', color: 'var(--outline)', marginBottom: '0.5rem'}}>
-                        <span className="material-icons" style={{fontSize: '0.8rem', verticalAlign: 'middle', marginRight: '2px'}}>location_on</span>
+                      <h3 style={{ fontSize: '1rem', marginBottom: '0.2rem' }}>{pro.name}</h3>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', marginBottom: '0.2rem' }}>{pro.role}</p>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--outline)', marginBottom: '0.5rem' }}>
+                        <span className="material-icons" style={{ fontSize: '0.8rem', verticalAlign: 'middle', marginRight: '2px' }}>location_on</span>
                         {pro.location}
                       </p>
-                      
+
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                        <div className="pro-card__rating" style={{justifyContent: 'flex-start', fontSize: '0.8rem', padding: 0, background: 'none'}}>
+                        <div className="pro-card__rating" style={{ justifyContent: 'flex-start', fontSize: '0.8rem', padding: 0, background: 'none' }}>
                           <span className="material-icons pro-card__star">star</span>
                           <strong>{pro.rating}</strong>
                           <span className="pro-card__reviews">({pro.reviews})</span>
                         </div>
-                        <span style={{color: 'var(--outline-variant)'}}>|</span>
+                        <span style={{ color: 'var(--outline-variant)' }}>|</span>
                         <div className="pro-card__trust" style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'var(--secondary-container)', padding: '0.2rem 0.4rem', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontWeight: 600 }}>
                           <span className="material-icons" style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>shield</span>
                           Trust: {pro.trustScore}/10
                         </div>
                       </div>
 
-                      <div style={{display: 'flex', gap: '0.5rem'}}>
-                        <button className="btn btn--primary" style={{padding: '0.3rem 0.8rem', fontSize: '0.75rem'}}>Book</button>
-                        <button className="btn btn--ghost" style={{padding: '0.3rem', borderRadius: '50%'}}>
-                          <span className="material-icons" style={{fontSize: '1rem'}}>chat</span>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button className="btn btn--primary" style={{ padding: '0.3rem 0.8rem', fontSize: '0.75rem' }}>Book</button>
+                        <button className="btn btn--ghost" style={{ padding: '0.3rem', borderRadius: '50%' }}>
+                          <span className="material-icons" style={{ fontSize: '1rem' }}>chat</span>
                         </button>
                       </div>
                     </div>
@@ -294,12 +295,12 @@ export default function CustomerDashboard() {
               <section className="dash-section">
                 <div className="dash-section__header">
                   <h2>Explore Services</h2>
-                  <a href="#" style={{color: 'var(--primary-container)', fontSize: '0.8rem', fontWeight: 600}}>View All</a>
+                  <a href="#" style={{ color: 'var(--primary-container)', fontSize: '0.8rem', fontWeight: 600 }}>View All</a>
                 </div>
                 <div className="dash-services">
                   {services.map(s => (
                     <div key={s.name} className="dash-service-card" onClick={() => setSearchQuery(s.name)}>
-                      <div className="dash-service-icon" style={{background: `color-mix(in srgb, ${s.color} 12%, transparent)`, color: s.color}}>
+                      <div className="dash-service-icon" style={{ background: `color-mix(in srgb, ${s.color} 12%, transparent)`, color: s.color }}>
                         <span className="material-icons">{s.icon}</span>
                       </div>
                       <span>{s.name}</span>
@@ -317,25 +318,25 @@ export default function CustomerDashboard() {
                     <div className="pro-card__verified"><span className="material-icons">verified</span></div>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <h3 style={{fontSize: '1.1rem', marginBottom: '0.2rem'}}>Vikram Singh</h3>
-                    <p style={{fontSize: '0.8rem', color: 'var(--on-surface-variant)', marginBottom: '0.2rem'}}>Expert Electrician &middot; 8 years exp.</p>
-                    <p style={{fontSize: '0.8rem', color: 'var(--outline)', marginBottom: '0.5rem'}}>Sector 21, Gurgaon</p>
+                    <h3 style={{ fontSize: '1.1rem', marginBottom: '0.2rem' }}>Vikram Singh</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', marginBottom: '0.2rem' }}>Expert Electrician &middot; 8 years exp.</p>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--outline)', marginBottom: '0.5rem' }}>Sector 21, Gurgaon</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                        <div className="pro-card__rating" style={{justifyContent: 'flex-start', fontSize: '0.8rem', padding: 0, background: 'none'}}>
-                          <span className="material-icons pro-card__star">star</span>
-                          <strong>4.9</strong>
-                          <span className="pro-card__reviews">(342)</span>
-                        </div>
-                        <span style={{color: 'var(--outline-variant)'}}>|</span>
-                        <div className="pro-card__trust" style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'var(--secondary-container)', padding: '0.2rem 0.4rem', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontWeight: 600 }}>
-                          <span className="material-icons" style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>shield</span>
-                          Trust: 9.8/10
-                        </div>
+                      <div className="pro-card__rating" style={{ justifyContent: 'flex-start', fontSize: '0.8rem', padding: 0, background: 'none' }}>
+                        <span className="material-icons pro-card__star">star</span>
+                        <strong>4.9</strong>
+                        <span className="pro-card__reviews">(342)</span>
+                      </div>
+                      <span style={{ color: 'var(--outline-variant)' }}>|</span>
+                      <div className="pro-card__trust" style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'var(--secondary-container)', padding: '0.2rem 0.4rem', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontWeight: 600 }}>
+                        <span className="material-icons" style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>shield</span>
+                        Trust: 9.8/10
+                      </div>
                     </div>
-                    <div style={{display: 'flex', gap: '0.5rem'}}>
-                      <button className="btn btn--primary" style={{padding: '0.4rem 1rem', fontSize: '0.8rem'}}>Book Now</button>
-                      <button className="btn btn--ghost" style={{padding: '0.4rem', borderRadius: '50%'}}>
-                        <span className="material-icons" style={{fontSize: '1.1rem'}}>chat</span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button className="btn btn--primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>Book Now</button>
+                      <button className="btn btn--ghost" style={{ padding: '0.4rem', borderRadius: '50%' }}>
+                        <span className="material-icons" style={{ fontSize: '1.1rem' }}>chat</span>
                       </button>
                     </div>
                   </div>
@@ -352,15 +353,15 @@ export default function CustomerDashboard() {
                         {pro.initials}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <h4 style={{fontSize: '0.9rem'}}>{pro.name}</h4>
-                        <p style={{fontSize: '0.75rem', color: 'var(--on-surface-variant)'}}>{pro.role}</p>
+                        <h4 style={{ fontSize: '0.9rem' }}>{pro.name}</h4>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>{pro.role}</p>
                       </div>
                       <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
                         <div className="pro-card__rating" style={{ fontSize: '0.7rem' }}>
-                          <span className="material-icons pro-card__star" style={{fontSize: '0.8rem'}}>star</span>
+                          <span className="material-icons pro-card__star" style={{ fontSize: '0.8rem' }}>star</span>
                           <strong>{pro.rating}</strong>
                         </div>
-                        <button className="btn btn--outline" style={{padding: '0.25rem 0.5rem', fontSize: '0.7rem'}}>View</button>
+                        <button className="btn btn--outline" style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem' }}>View</button>
                       </div>
                     </div>
                   ))}
@@ -378,17 +379,17 @@ export default function CustomerDashboard() {
                     DW
                   </div>
                   <div>
-                    <h4 style={{fontSize: '0.9rem', marginBottom: '0.1rem'}}>David Wilson</h4>
-                    <p style={{fontSize: '0.75rem', color: 'var(--on-surface-variant)'}}>Master Electrician &middot; Oct 12</p>
+                    <h4 style={{ fontSize: '0.9rem', marginBottom: '0.1rem' }}>David Wilson</h4>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>Master Electrician &middot; Oct 12</p>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                   {[1, 2, 3, 4, 5].map((star) => (
-                    <span 
-                      key={star} 
-                      className="material-icons" 
-                      style={{ 
-                        color: (hoverRating || rating) >= star ? '#d69e2e' : 'var(--outline-variant)', 
+                    <span
+                      key={star}
+                      className="material-icons"
+                      style={{
+                        color: (hoverRating || rating) >= star ? '#d69e2e' : 'var(--outline-variant)',
                         cursor: 'pointer',
                         fontSize: '1.8rem',
                         transition: 'color 0.2s',
@@ -402,8 +403,8 @@ export default function CustomerDashboard() {
                     </span>
                   ))}
                 </div>
-                <button 
-                  className="btn btn--primary" 
+                <button
+                  className="btn btn--primary"
                   style={{ width: '100%', padding: '0.6rem', fontSize: '0.85rem' }}
                   disabled={rating === 0}
                   onClick={() => {
@@ -425,10 +426,10 @@ export default function CustomerDashboard() {
                   ].map(chat => (
                     <div key={chat.name} style={{ background: '#fff', padding: '0.8rem 1rem', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--primary-container)', boxShadow: 'var(--shadow-sm)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                        <strong style={{fontSize: '0.85rem'}}>{chat.name}</strong>
-                        <span style={{fontSize: '0.65rem', color: 'var(--outline)'}}>{chat.time}</span>
+                        <strong style={{ fontSize: '0.85rem' }}>{chat.name}</strong>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--outline)' }}>{chat.time}</span>
                       </div>
-                      <p style={{fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontStyle: 'italic'}}>{chat.msg}</p>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontStyle: 'italic' }}>{chat.msg}</p>
                     </div>
                   ))}
                 </div>
@@ -437,13 +438,13 @@ export default function CustomerDashboard() {
               {/* Pricing Insights */}
               <section className="dash-section" style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%)', color: 'white', borderRadius: 'var(--radius-xl)', padding: '1.5rem', marginTop: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <span className="material-icons" style={{color: '#f6ad55'}}>trending_up</span>
-                  <h3 style={{fontSize: '1.1rem', color: 'white'}}>Pricing Insights</h3>
+                  <span className="material-icons" style={{ color: '#f6ad55' }}>trending_up</span>
+                  <h3 style={{ fontSize: '1.1rem', color: 'white' }}>Pricing Insights</h3>
                 </div>
                 <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', marginBottom: '1.5rem' }}>
                   Average rates for <strong>Sector 21, Gurgaon</strong> this week. Based on 1,200+ bookings in your radius.
                 </p>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.4rem' }}>
                     <span>Plumbing (Minor)</span>
@@ -458,21 +459,21 @@ export default function CustomerDashboard() {
 
               {/* Trusts */}
               <section className="dash-section" style={{ marginTop: '2rem' }}>
-                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                   {[
-                     { icon: 'verified_user', title: 'Verified Providers', desc: 'Rigorous background check & skills test.' },
-                     { icon: 'security', title: 'Secure Payments', desc: 'Funds held safely until 100% satisfied.' },
-                     { icon: 'headset_mic', title: '24/7 Support', desc: 'Dedicated concierge for your needs.' }
-                   ].map(trust => (
-                     <div key={trust.title} style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-start' }}>
-                       <span className="material-icons" style={{ color: 'var(--primary-container)' }}>{trust.icon}</span>
-                       <div>
-                         <h5 style={{ fontSize: '0.85rem', marginBottom: '0.1rem' }}>{trust.title}</h5>
-                         <p style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>{trust.desc}</p>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {[
+                    { icon: 'verified_user', title: 'Verified Providers', desc: 'Rigorous background check & skills test.' },
+                    { icon: 'security', title: 'Secure Payments', desc: 'Funds held safely until 100% satisfied.' },
+                    { icon: 'headset_mic', title: '24/7 Support', desc: 'Dedicated concierge for your needs.' }
+                  ].map(trust => (
+                    <div key={trust.title} style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-start' }}>
+                      <span className="material-icons" style={{ color: 'var(--primary-container)' }}>{trust.icon}</span>
+                      <div>
+                        <h5 style={{ fontSize: '0.85rem', marginBottom: '0.1rem' }}>{trust.title}</h5>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>{trust.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </section>
             </div>
           </div>

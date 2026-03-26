@@ -1,4 +1,15 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 export default function HeroSection() {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [location, setLocation] = useState('Your Location');
+  const navigate = useNavigate();
+
+  const handleSearch = () => {
+    navigate('/dashboard', { state: { searchQuery, location } });
+  };
+
   return (
     <section className="hero" id="hero">
       {/* Background blobs */}
@@ -30,14 +41,21 @@ export default function HeroSection() {
               type="text"
               className="hero__search-input"
               placeholder="What service do you need?"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             />
-            <select className="hero__search-select">
+            <select 
+              className="hero__search-select"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            >
               <option>Your Location</option>
               <option>Mumbai</option>
               <option>Delhi</option>
               <option>Bangalore</option>
             </select>
-            <button className="btn btn--primary hero__search-btn">Find Pros</button>
+            <button className="btn btn--primary hero__search-btn" onClick={handleSearch}>Find Pros</button>
           </div>
         </div>
 
