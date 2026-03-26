@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import '../App.css'
+import PostRequestFlow from '../components/PostRequestFlow'
+import CustomerJobsFlow from '../components/CustomerJobsFlow'
 
 const generateMockData = () => {
   const roles = [
@@ -77,6 +79,7 @@ export default function CustomerDashboard() {
   
   const [rating, setRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
+  const [showPostRequest, setShowPostRequest] = useState(false)
 
   const sidebarLinks = [
     { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
@@ -196,7 +199,36 @@ export default function CustomerDashboard() {
           </div>
         </header>
 
-        {isFiltering ? (
+        {/* Post a Request Button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '0.5rem' }}>
+          <button
+            id="post-request-btn"
+            onClick={() => setShowPostRequest(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: 'linear-gradient(135deg, #dd6b20, #e05c14)',
+              color: 'white', border: 'none', borderRadius: '100px',
+              padding: '0.55rem 1.4rem', fontSize: '0.9rem', fontWeight: 700,
+              cursor: 'pointer', boxShadow: '0 4px 14px rgba(221,107,32,0.4)',
+              transition: 'transform 0.15s, box-shadow 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(221,107,32,0.5)' }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(221,107,32,0.4)' }}
+          >
+            <span className="material-icons" style={{ fontSize: '1.1rem' }}>add_circle</span>
+            Post a Request
+          </button>
+        </div>
+
+        {/* Modal: Post Request */}
+        {showPostRequest && <PostRequestFlow onClose={() => setShowPostRequest(false)} />}
+
+        {/* Main View Area */}
+        {activeTab === 'bookings' ? (
+          <div style={{ padding: '0 0.5rem', animation: 'fadeIn 0.3s' }}>
+            <CustomerJobsFlow />
+          </div>
+        ) : isFiltering ? (
           /* Search Results View */
           <div className="dash-search-results">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
