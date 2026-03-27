@@ -62,8 +62,11 @@ const Login = () => {
 
     try {
       // 1. Check if user exists first
-      const { data: profile } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle();
-      if (!profile) throw new Error("Account not found. Please sign up first.");
+      const { data: prov } = await supabase.from('service_providers').select('id').eq('email', email).maybeSingle();
+      const { data: cons } = await supabase.from('consumers').select('id').eq('email', email).maybeSingle();
+      const { data: adm }  = await supabase.from('admin').select('id').eq('email', email).maybeSingle();
+
+      if (!prov && !cons && !adm) throw new Error("Account not found. Please sign up first.");
       
       // 2. Generate and Send OTP
       const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -87,14 +90,28 @@ const Login = () => {
   };
 
   const redirectUserByRole = async (userId) => {
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle();
-    if (profile && profile.role === 'client') return navigate('/dashboard');
-    if (profile && profile.role === 'provider') {
-      const { data: prov } = await supabase.from('service_providers').select('status').eq('id', userId).maybeSingle();
-      if (prov && (prov.status === 'pending' || prov.status === 'rejected')) navigate('/pending-approval');
+    // Check if user is a provider
+    const { data: prov } = await supabase.from('service_providers').select('status').eq('id', userId).maybeSingle();
+    if (prov) {
+      if (prov.status === 'pending' || prov.status === 'rejected') navigate('/pending-approval');
       else navigate('/provider-dashboard');
       return;
     }
+
+    // Check if user is an admin
+    const { data: adminData } = await supabase.from('admin').select('id').eq('id', userId).maybeSingle();
+    if (adminData) {
+      navigate('/admin/dashboard');
+      return;
+    }
+
+    // Default: Check if user is a consumer
+    const { data: cons } = await supabase.from('consumers').select('id').eq('id', userId).maybeSingle();
+    if (cons) {
+      navigate('/dashboard');
+      return;
+    }
+
     navigate('/dashboard'); // Fallback
   };
 
@@ -106,12 +123,16 @@ const Login = () => {
     setLoading(true);
     try {
       // Find the user by email to get their ID
-      const { data: userRecord } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle();
-      if (!userRecord) throw new Error("Account not found.");
+      const { data: prov } = await supabase.from('service_providers').select('id').eq('email', email).maybeSingle();
+      const { data: cons } = await supabase.from('consumers').select('id').eq('email', email).maybeSingle();
+      const { data: adm }  = await supabase.from('admin').select('id').eq('email', email).maybeSingle();
+      
+      const userId = prov?.id || cons?.id || adm?.id;
+      if (!userId) throw new Error("Account not found.");
 
       // For this demo, we'll inform them and mock the reset link
       setError("Success! Code verified. Please reset your password or navigate to dashboard.");
-      setTimeout(() => redirectUserByRole(userRecord.id), 2000);
+      setTimeout(() => redirectUserByRole(userId), 2000);
     } catch (err) {
       setError(err.message);
     } finally {

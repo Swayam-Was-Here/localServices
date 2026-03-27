@@ -9,6 +9,8 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [serverOtp, setServerOtp] = useState(null);
+  const [userOtp, setUserOtp] = useState('');
 
   const navigate = useNavigate();
 
@@ -47,14 +49,7 @@ const Signup = () => {
     return supabase.storage.from('provider_documents').getPublicUrl(path).data.publicUrl;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      return setError("Passwords do not match");
-    }
-    setLoading(true);
-    setError(null);
-
+  const completeRegistration = async () => {
     try {
       // 1. Sign up user via Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -106,6 +101,51 @@ const Signup = () => {
     }
   };
 
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    setServerOtp(generatedOtp);
+    
+    try {
+      const response = await fetch('http://localhost:5000/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, otp: generatedOtp })
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to send verification email");
+      }
+      setStep(3); // Go to OTP verification step
+    } catch (err) {
+      setError("Could not connect to email server. Please ensure the backend is running.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = (e) => {
+    e.preventDefault();
+    if (userOtp !== serverOtp) {
+      return setError("Invalid OTP. Please try again.");
+    }
+    setError(null);
+    setStep(4); // Advance to full form
+  };
+
+  const handleFinalSubmit = async (e) => {
+    e.preventDefault();
+    if (formData.password !== formData.confirmPassword) {
+      return setError("Passwords do not match");
+    }
+    setLoading(true);
+    setError(null);
+    await completeRegistration();
+  };
+
   if (successMsg) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '2rem' }}>
@@ -130,13 +170,15 @@ const Signup = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <h3 style={{ textAlign: 'center', marginBottom: '1rem', color: 'var(--secondary)' }}>I am joining as a...</h3>
             <button
-              onClick={() => { setRole('consumer'); setStep(2); }}
+               // Consumer goes directly to the full form (step 4)
+              onClick={() => { setRole('consumer'); setStep(4); }}
               style={{ padding: '1.5rem', background: 'var(--surface-container-high)', borderRadius: 'var(--radius-md)', fontSize: '1.1rem', fontWeight: 600, border: '2px solid transparent', color: 'var(--on-surface)' }}
               className="neon-glow-hover"
             >
               Consumer
             </button>
             <button
+               // Provider goes to email/OTP collection first (step 2)
               onClick={() => { setRole('provider'); setStep(2); }}
               style={{ padding: '1.5rem', background: 'var(--surface-container-high)', borderRadius: 'var(--radius-md)', fontSize: '1.1rem', fontWeight: 600, border: '2px solid transparent', color: 'var(--on-surface)' }}
               className="neon-glow-hover"
@@ -149,8 +191,39 @@ const Signup = () => {
           </div>
         )}
 
-        {step === 2 && (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {step === 2 && role === 'provider' && (
+          <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center' }}>
+            <div style={{ marginBottom: '1rem' }}>
+               <span className="material-icons" style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '0.5rem' }}>email</span>
+               <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--on-surface)' }}>Provider Verification</h3>
+               <p style={{ color: 'var(--on-surface-variant)', fontSize: '0.9rem', margin: 0 }}>
+                 Please enter your work email. We will send you a one-time password to verify your address.
+               </p>
+            </div>
+            <div>
+              <input 
+                type="email" 
+                name="email"
+                value={formData.email} 
+                onChange={handleChange} 
+                required 
+                placeholder="provider@example.com"
+                style={{ width: '100%', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', fontSize: '1.1rem' }} 
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button type="button" onClick={() => setStep(1)} style={{ padding: '1rem', flex: 1, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold' }}>
+                Back
+              </button>
+              <button type="submit" disabled={loading} style={{ padding: '1rem', flex: 2, background: 'var(--primary)', color: 'var(--on-primary)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold', fontSize: '1rem' }} className="neon-glow-hover">
+                {loading ? 'Sending...' : 'Send OTP'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 4 && (
+          <form onSubmit={handleFinalSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
@@ -166,7 +239,7 @@ const Signup = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Email Address</label>
-                <input type="email" name="email" value={formData.email} onChange={handleChange} required style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
+                <input type="email" name="email" value={formData.email} onChange={handleChange} required readOnly={role === 'provider'} style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', opacity: role === 'provider' ? 0.6 : 1 }} />
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Password</label>
@@ -276,11 +349,42 @@ const Signup = () => {
             )}
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-              <button type="button" onClick={() => setStep(1)} style={{ padding: '1rem', flex: 1, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold' }}>
+              <button type="button" onClick={() => role === 'provider' ? setStep(3) : setStep(1)} style={{ padding: '1rem', flex: 1, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold' }}>
                 Back
               </button>
               <button type="submit" disabled={loading} style={{ padding: '1rem', flex: 2, background: 'var(--primary)', color: 'var(--on-primary)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold', fontSize: '1rem' }} className="neon-glow-hover">
                 {loading ? 'Registering...' : 'Register'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 3 && (
+          <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center' }}>
+            <div style={{ marginBottom: '1rem' }}>
+               <span className="material-icons" style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '0.5rem' }}>mark_email_read</span>
+               <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--on-surface)' }}>Enter OTP</h3>
+               <p style={{ color: 'var(--on-surface-variant)', fontSize: '0.9rem', margin: 0 }}>
+                 We sent a verification code to <strong>{formData.email}</strong>
+               </p>
+            </div>
+            <div>
+              <input 
+                type="text" 
+                value={userOtp} 
+                onChange={(e) => setUserOtp(e.target.value)} 
+                required 
+                maxLength={6}
+                placeholder="000000"
+                style={{ width: '100%', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '2px solid var(--primary)', textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem', fontWeight: 'bold' }} 
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button type="button" onClick={() => setStep(2)} style={{ padding: '1rem', flex: 1, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold' }}>
+                Back
+              </button>
+              <button type="submit" disabled={loading} style={{ padding: '1rem', flex: 2, background: 'var(--primary)', color: 'var(--on-primary)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold', fontSize: '1rem' }} className="neon-glow-hover">
+                {loading ? 'Verifying...' : 'Verify & Continue'}
               </button>
             </div>
           </form>
