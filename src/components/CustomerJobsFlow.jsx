@@ -2,37 +2,140 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabaseClient'
 
+const JOB_TITLE = 'Plumbing Repair & Pipe Fixing'
+const CUSTOMER_NAME = 'You'
+
+async function sendBidAcceptedEmail(provider) {
+  try {
+    await fetch('http://localhost:5000/send-bid-accepted', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerEmail: provider.email,
+        providerName:  provider.name,
+        jobTitle:      JOB_TITLE,
+        customerName:  CUSTOMER_NAME,
+        amount:        provider.hourly_rate ?? 'N/A',
+      }),
+    })
+  } catch (err) {
+    console.error('Failed to send bid-accepted email:', err)
+  }
+}
+
 export default function CustomerJobsFlow() {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
-  const [jobs, setJobs] = useState([])
-  const [selectedJob, setSelectedJob] = useState(null)
-  const [bids, setBids] = useState([])
-  const [view, setView] = useState('job_list') // job_list -> bid_list -> bid_details -> payment -> tracking -> success
+  const [view, setView] = useState('bids')
+  const [selectedBid, setSelectedBid] = useState(null)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [rating, setRating] = useState(4)
+  const [emailSent, setEmailSent] = useState(false)
+  const [providers, setProviders] = useState([])
+  const [loadingProviders, setLoadingProviders] = useState(true)
 
   useEffect(() => {
-    fetchJobs()
+    async function fetchProviders() {
+      setLoadingProviders(true)
+      const { data, error } = await supabase
+        .from('service_providers')
+        .select('id, name, email, phone, trust_score, hourly_rate, categories, photo_url, city, state')
+        .eq('status', 'approved')
+      if (error) {
+        console.error('Error fetching providers:', error)
+      } else {
+        setProviders(data || [])
+      }
+      setLoadingProviders(false)
+    }
+    fetchProviders()
   }, [])
 
-  const fetchJobs = async () => {
-    setLoading(true)
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+  /* ── VIEW 1: BIDS RECEIVED ── */
+  if (view === 'bids') {
+    return (
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800 }}>
+            {loadingProviders ? '⏳ Loading Bids...' : `🔥 ${providers.length} Bid${providers.length !== 1 ? 's' : ''} Received`}
+          </h1>
+        </div>
+        <p style={{ fontSize: '0.9rem', color: 'var(--on-surface-variant)', marginBottom: '2rem' }}>
+          Expert professionals are ready to assist you. Review their proposals and hire the best match for your project.
+        </p>
 
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('consumer_id', user.id)
-        .order('created_at', { ascending: false })
+        {loadingProviders && (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--on-surface-variant)' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
+            <p>Fetching available providers...</p>
+          </div>
+        )}
 
-      if (error) throw error
-      setJobs(data || [])
-    } catch (err) {
-      console.error('Error fetching jobs:', err)
-    } finally {
-      setLoading(false)
-    }
+        {!loadingProviders && providers.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '3rem', background: '#fff', borderRadius: 'var(--radius-xl)', border: '1px solid var(--outline-variant)' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔍</div>
+            <h3 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>No Approved Providers Yet</h3>
+            <p style={{ color: 'var(--on-surface-variant)', fontSize: '0.9rem' }}>There are no approved service providers available right now. Please check back later.</p>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {providers.map((provider, i) => {
+            const initials = provider.name
+              ? provider.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+              : '??'
+            const trustScore = provider.trust_score ?? 0
+            const isHighTrust = trustScore >= 8.5
+            const location = [provider.city, provider.state].filter(Boolean).join(', ')
+            const serviceLabel = provider.categories?.length > 0
+              ? provider.categories.slice(0, 2).join(' · ')
+              : 'General Services'
+
+            return (
+              <div key={provider.id} style={{ background: '#fff', borderRadius: 'var(--radius-xl)', padding: '1.5rem', border: '1px solid var(--outline-variant)', boxShadow: i === 0 ? 'var(--shadow-sm)' : 'none' }}>
+                <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+                  {provider.photo_url ? (
+                    <img src={provider.photo_url} alt={provider.name} style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--outline-variant)' }} />
+                  ) : (
+                    <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(49,130,206,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3182ce', fontWeight: 700, fontSize: '1.2rem', flexShrink: 0 }}>
+                      {initials}
+                    </div>
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{provider.name}</h3>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)' }}>
+                        {provider.hourly_rate ? `₹${provider.hourly_rate}/hr` : 'Rate on request'}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                      <span style={{ fontSize: '0.75rem', background: isHighTrust ? 'rgba(56,161,105,0.1)' : 'var(--surface-container)', color: isHighTrust ? '#38a169' : 'var(--on-surface-variant)', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 700 }}>
+                        ⭐ Trust Score: {trustScore}/10
+                      </span>
+                      {isHighTrust && (
+                        <span style={{ fontSize: '0.75rem', background: 'rgba(214,158,46,0.1)', color: '#d69e2e', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 700 }}>Highly Trusted</span>
+                      )}
+                      {location && (
+                        <span style={{ fontSize: '0.75rem', background: 'var(--surface-container)', color: 'var(--on-surface-variant)', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 600 }}>📍 {location}</span>
+                      )}
+                    </div>
+
+                    {serviceLabel && (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--on-surface-variant)', marginBottom: '1rem' }}>{serviceLabel}</p>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }}>View Profile</button>
+                      <button className="btn btn--primary" style={{ flex: 2, padding: '0.6rem' }} onClick={() => { setSelectedBid(provider); setView('bid_details') }}>Accept Proposal</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
   }
 
   const fetchBids = async (jobId) => {
@@ -61,9 +164,55 @@ export default function CustomerJobsFlow() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '3rem' }}>
-        <span className="material-icons animate-spin" style={{ fontSize: '2rem', color: 'var(--primary)' }}>sync</span>
-        <p style={{ marginTop: '1rem', color: 'var(--on-surface-variant)' }}>Loading your bookings...</p>
+      <div style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem' }}>Payment Summary</h1>
+        <p style={{ fontSize: '0.9rem', color: 'var(--on-surface-variant)', marginBottom: '2rem' }}>
+          You're one step away from securing your professional expert. Review your transaction details before proceeding to our encrypted gateway.
+        </p>
+
+        <div style={{ background: '#fff', borderRadius: 'var(--radius-xl)', padding: '2rem', border: '1px solid var(--outline-variant)', boxShadow: 'var(--shadow-sm)', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(49,130,206,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3182ce', fontWeight: 700, fontSize: '1.4rem', marginBottom: '1rem' }}>MT</div>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.2rem' }}>Marcus Thorne</h3>
+            <div style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)' }}>Plumbing Specialist</div>
+          </div>
+
+          <div style={{ borderTop: '2px dashed var(--outline-variant)', borderBottom: '2px dashed var(--outline-variant)', padding: '1.5rem 0', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.8rem', fontSize: '0.9rem' }}>
+              <span style={{ color: 'var(--on-surface-variant)' }}>Service Fee</span>
+              <strong>₹800</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+              <span style={{ color: 'var(--on-surface-variant)' }}>Platform Fee</span>
+              <strong>₹50</strong>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary)' }}>Total Secure Payment</span>
+            <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary)' }}>₹850</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center', color: '#38a169', marginBottom: '2rem' }}>
+          <span className="material-icons" style={{ fontSize: '1.1rem' }}>lock</span>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>256-bit Encrypted Checkout</span>
+        </div>
+
+        <button
+          className="btn btn--primary"
+          style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }}
+          onClick={async () => {
+            if (selectedBid && !emailSent) {
+              setEmailSent(true)
+              await sendBidAcceptedEmail(selectedBid)
+            }
+            setView('tracking')
+          }}
+        >
+          Confirm Secure Payment
+        </button>
+        <button className="btn btn--ghost" style={{ marginTop: '1rem', width: '100%' }} onClick={() => setView('bid_details')}>Cancel</button>
       </div>
     )
   }

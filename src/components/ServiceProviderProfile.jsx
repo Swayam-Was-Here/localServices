@@ -3,16 +3,18 @@ import React, { useState } from 'react'
 export default function ServiceProviderProfile({ provider = {}, isEditable = false }) {
   const [isSelfEditing, setIsSelfEditing] = useState(false)
   const [proData, setProData] = useState({
-    businessName: provider.businessName || 'Marcus Richardson',
-    role: provider.role || 'Master HVAC Specialist',
+    businessName: provider.businessName || provider.name || 'Marcus Richardson',
+    role: provider.role || provider.service_name || 'Master HVAC Specialist',
     email: provider.email || 'marcus.hvac@expert.com',
     phone: provider.phone || '+91 88822 11000',
-    location: provider.location || 'Sector 21 & DLF Phase 2, Gurgaon',
-    logo: provider.logo || null,
+    location: provider.location || `${provider.city || 'Gurgaon'}, ${provider.state || 'Haryana'}`,
+    logo: provider.photo_url || null,
     experience: provider.experience || '12 years',
-    status: provider.status || 'Verified Platinum',
-    rate: provider.rate || '₹500 / hr',
-    categories: provider.categories || ['AC Repair', 'HVAC Installation', 'Heating Systems'],
+    status: provider.status === 'approved' ? 'Verified Platinum' : 'Pending Verification',
+    rate: provider.hourly_rate ? `₹${provider.hourly_rate} / hr` : '₹500 / hr',
+    categories: provider.categories || [],
+    service_name: provider.service_name || '',
+    custom_service_name: '',
     license: provider.license || 'H-V-122934-EXP',
     ...provider
   })
@@ -31,8 +33,10 @@ export default function ServiceProviderProfile({ provider = {}, isEditable = fal
   }
 
   const handleSave = () => {
-    setProData({ ...tempData })
-    setIsSelfEditing(false)
+    const finalRole = tempData.service_name === 'Other' ? tempData.custom_service_name : tempData.service_name;
+    setProData({ ...tempData, role: finalRole || tempData.role, service_name: finalRole });
+    setIsSelfEditing(false);
+    // Note: To persist this to the DB, you'd add a Supabase update call here.
   }
 
   // Specialized Trust Score Algorithm
@@ -93,12 +97,33 @@ export default function ServiceProviderProfile({ provider = {}, isEditable = fal
                     onChange={e => setTempData({...tempData, businessName: e.target.value})}
                     style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--on-surface)', border: '1px solid var(--primary)', borderRadius: 'var(--radius-sm)', padding: '0.4rem', outline: 'none', width: '90%' }}
                   />
-                  <input 
-                    type="text" 
-                    value={tempData.role} 
-                    onChange={e => setTempData({...tempData, role: e.target.value})}
-                    style={{ fontSize: '1rem', color: 'var(--primary)', fontWeight: 700, border: '1px solid var(--primary)', borderRadius: 'var(--radius-sm)', padding: '0.3rem', outline: 'none', width: '70%' }}
-                  />
+                  <select
+                    value={tempData.service_name}
+                    onChange={e => setTempData({...tempData, service_name: e.target.value})}
+                    style={{ fontSize: '1rem', color: 'var(--primary)', fontWeight: 700, border: '1px solid var(--primary)', borderRadius: 'var(--radius-sm)', padding: '0.3rem', outline: 'none', width: '90%', background: '#fff' }}
+                  >
+                    <option value="" disabled>Select Specific Service</option>
+                    <option value="Plumbing Repair & Maintenance">Plumbing Repair & Maintenance</option>
+                    <option value="Electrical Installation & Repair">Electrical Installation & Repair</option>
+                    <option value="AC Servicing & Gas Refill">AC Servicing & Gas Refill</option>
+                    <option value="Carpentry & Furniture Assembly">Carpentry & Furniture Assembly</option>
+                    <option value="House Cleaning & Deep Cleaning">House Cleaning & Deep Cleaning</option>
+                    <option value="Painting & Wall Decor">Painting & Wall Decor</option>
+                    <option value="RO Water Purifier Repair">RO Water Purifier Repair</option>
+                    <option value="Refrigerator Repair">Refrigerator Repair</option>
+                    <option value="Washing Machine Repair">Washing Machine Repair</option>
+                    <option value="Pest Control Services">Pest Control Services</option>
+                    <option value="Other">Other (Specify)</option>
+                  </select>
+                  {tempData.service_name === 'Other' && (
+                    <input 
+                      type="text" 
+                      placeholder="Enter custom service"
+                      value={tempData.custom_service_name} 
+                      onChange={e => setTempData({...tempData, custom_service_name: e.target.value})}
+                      style={{ fontSize: '1rem', color: 'var(--primary)', fontWeight: 700, border: '1px solid var(--primary)', borderRadius: 'var(--radius-sm)', padding: '0.3rem', outline: 'none', width: '90%' }}
+                    />
+                  )}
                 </div>
               ) : (
                 <>
@@ -168,12 +193,17 @@ export default function ServiceProviderProfile({ provider = {}, isEditable = fal
 
             <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1rem' }}>Primary Services</h4>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              {(isSelfEditing ? tempData.categories : proData.categories).map(cat => (
+              {(isSelfEditing ? tempData.categories : proData.categories).length > 0 ? (isSelfEditing ? tempData.categories : proData.categories).map(cat => (
                 <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem 1rem', background: 'var(--surface-container-lowest)', borderRadius: 'var(--radius-md)', border: '1px solid var(--outline-variant)' }}>
                   <span className="material-icons" style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>check_circle</span>
                   <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{cat}</span>
                 </div>
-              ))}
+              )) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem 1rem', background: 'var(--surface-container-lowest)', borderRadius: 'var(--radius-md)', border: '1px solid var(--outline-variant)' }}>
+                  <span className="material-icons" style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>check_circle</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{proData.role || 'General Service'}</span>
+                </div>
+              )}
             </div>
           </section>
 
