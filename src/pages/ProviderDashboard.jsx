@@ -91,6 +91,43 @@ export default function ProviderDashboard() {
   const [currentBidPrice, setCurrentBidPrice] = useState(0)
   const [liveRequests, setLiveRequests] = useState([])
   const [providerBids, setProviderBids] = useState([])
+  const [providerLocation, setProviderLocation] = useState(null)
+  const [searchRadius, setSearchRadius] = useState(10) // km
+  const [isLocating, setIsLocating] = useState(false)
+  const [locationError, setLocationError] = useState(null)
+
+  // Haversine formula to calculate distance between two coordinates in km
+  const haversineDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371
+    const dLat = ((lat2 - lat1) * Math.PI) / 180
+    const dLon = ((lon2 - lon1) * Math.PI) / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  // Fetch provider's live location
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported')
+      return
+    }
+    setIsLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setProviderLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setIsLocating(false)
+      },
+      (err) => {
+        console.warn('Location permission denied:', err)
+        setLocationError('Location permission denied')
+        setIsLocating(false)
+      }
+    )
+  }, [])
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -119,20 +156,31 @@ export default function ProviderDashboard() {
           return map[cat] || 'more_horiz';
         };
 
-        const mapped = data.map(dbJob => ({
-          id: dbJob.id,
-          title: dbJob.title,
-          category: dbJob.category,
-          icon: fetchIcon(dbJob.category),
-          color: fetchColor(dbJob.category),
-          budgetMin: dbJob.budget ? Math.max(0, dbJob.budget - 500) : 0,
-          budgetMax: dbJob.budget || 0,
-          distance: 'Live',
-          urgency: 'New',
-          postedAt: new Date(dbJob.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-          address: dbJob.location || 'Unknown',
-          description: dbJob.description || ''
-        }));
+        const mapped = data.map(dbJob => {
+          let distKm = null
+          if (providerLocation && dbJob.latitude && dbJob.longitude) {
+            distKm = haversineDistance(providerLocation.lat, providerLocation.lng, dbJob.latitude, dbJob.longitude)
+          }
+          return {
+            id: dbJob.id,
+            title: dbJob.title,
+            category: dbJob.category,
+            icon: fetchIcon(dbJob.category),
+            color: fetchColor(dbJob.category),
+            budgetMin: dbJob.budget ? Math.max(0, dbJob.budget - 500) : 0,
+            budgetMax: dbJob.budget || 0,
+            budget: dbJob.budget,
+            distance: distKm !== null ? `${distKm.toFixed(1)} km` : 'Unknown',
+            distanceKm: distKm,
+            urgency: 'New',
+            postedAt: new Date(dbJob.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+            address: dbJob.location || 'Unknown',
+            description: dbJob.description || '',
+            status: dbJob.status,
+            latitude: dbJob.latitude,
+            longitude: dbJob.longitude
+          }
+        });
         setLiveRequests(mapped);
       }
     };
@@ -167,9 +215,17 @@ export default function ProviderDashboard() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, []);
+  }, [providerLocation]);
 
-  const visibleRequests = [...liveRequests, ...MOCK_REQUESTS].filter(r => !declinedJobs.has(r.id))
+  // Filter requests: show all if no location, filter by radius if location is available
+  const filteredRequests = liveRequests.filter(r => {
+    if (!providerLocation) return true // show all if no provider location
+    if (r.distanceKm === null) return true // show if request has no coordinates
+    return r.distanceKm <= searchRadius
+  })
+
+  const visibleRequests = [...filteredRequests, ...MOCK_REQUESTS].filter(r => !declinedJobs.has(r.id))
+
 
   return (
     <div className="dashboard-layout">
@@ -330,6 +386,113 @@ export default function ProviderDashboard() {
                 <span style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)' }}>{visibleRequests.length} open</span>
               </div>
 
+              {/* Location & Radius Filter Bar */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(26,54,93,0.04) 0%, rgba(49,130,206,0.06) 100%)',
+                borderRadius: 'var(--radius-lg)',
+                padding: '1rem 1.2rem',
+                marginBottom: '1.2rem',
+                border: '1px solid var(--outline-variant)',
+              }}>
+                {/* Location Status */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{
+                      width: '28px', height: '28px', borderRadius: '50%',
+                      background: providerLocation ? 'rgba(56,161,105,0.12)' : isLocating ? 'rgba(49,130,206,0.12)' : 'rgba(229,62,62,0.12)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span className="material-icons" style={{
+                        fontSize: '0.95rem',
+                        color: providerLocation ? '#38a169' : isLocating ? '#3182ce' : '#e53e3e',
+                        animation: isLocating ? 'pulse 1.5s infinite' : 'none'
+                      }}>
+                        {providerLocation ? 'my_location' : isLocating ? 'sync' : 'location_off'}
+                      </span>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: providerLocation ? '#38a169' : '#e53e3e' }}>
+                        {providerLocation ? 'Location Active' : isLocating ? 'Detecting...' : 'Location Off'}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--on-surface-variant)' }}>
+                        {providerLocation 
+                          ? `${providerLocation.lat.toFixed(4)}°, ${providerLocation.lng.toFixed(4)}°` 
+                          : locationError || 'Enable location for radius filter'}
+                      </div>
+                    </div>
+                  </div>
+                  {!providerLocation && !isLocating && (
+                    <button
+                      onClick={() => {
+                        setIsLocating(true)
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => {
+                            setProviderLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+                            setIsLocating(false)
+                            setLocationError(null)
+                          },
+                          (err) => {
+                            setLocationError('Permission denied')
+                            setIsLocating(false)
+                          }
+                        )
+                      }}
+                      style={{
+                        background: 'var(--primary)', color: 'white', border: 'none',
+                        borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.7rem',
+                        fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '4px'
+                      }}
+                    >
+                      <span className="material-icons" style={{ fontSize: '0.85rem' }}>gps_fixed</span>
+                      Enable
+                    </button>
+                  )}
+                </div>
+
+                {/* Radius Slider */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Search Radius
+                    </label>
+                    <span style={{
+                      fontSize: '0.8rem', fontWeight: 800, color: 'var(--primary)',
+                      background: 'var(--primary-container)', padding: '2px 10px',
+                      borderRadius: '100px',
+                    }}>
+                      {searchRadius} km
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="50"
+                    value={searchRadius}
+                    onChange={e => setSearchRadius(parseInt(e.target.value))}
+                    style={{ width: '100%', cursor: 'pointer', accentColor: 'var(--primary)', height: '6px' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--outline)', marginTop: '2px' }}>
+                    <span>1 km</span>
+                    <span>25 km</span>
+                    <span>50 km</span>
+                  </div>
+                </div>
+
+                {/* Filter summary */}
+                {providerLocation && (
+                  <div style={{
+                    marginTop: '0.6rem', paddingTop: '0.6rem',
+                    borderTop: '1px solid var(--outline-variant)',
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    fontSize: '0.72rem', color: 'var(--on-surface-variant)',
+                  }}>
+                    <span className="material-icons" style={{ fontSize: '0.85rem', color: '#3182ce' }}>filter_alt</span>
+                    Showing <strong style={{ color: 'var(--primary)' }}>{filteredRequests.length}</strong> request{filteredRequests.length !== 1 ? 's' : ''} within {searchRadius} km
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {visibleRequests.map(req => (
                   <div key={req.id} 
@@ -364,9 +527,24 @@ export default function ProviderDashboard() {
                             color: '#3182ce',
                           }}>Pending</span>
                         </div>
-                        <p style={{ fontSize: '0.78rem', color: 'var(--on-surface-variant)', marginBottom: '0.6rem' }}>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--on-surface-variant)', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
                           <span className="material-icons" style={{ fontSize: '0.8rem', verticalAlign: 'middle', marginRight: '2px' }}>location_on</span>
-                          {req.address} &nbsp;·&nbsp; {req.distance} away &nbsp;·&nbsp; {req.postedAt}
+                          {req.address} &nbsp;·&nbsp;
+                          <span style={{
+                            fontWeight: 700,
+                            color: req.distanceKm != null
+                              ? req.distanceKm < 3 ? '#38a169' : req.distanceKm < 10 ? '#dd6b20' : '#e53e3e'
+                              : 'var(--on-surface-variant)',
+                            background: req.distanceKm != null
+                              ? req.distanceKm < 3 ? 'rgba(56,161,105,0.1)' : req.distanceKm < 10 ? 'rgba(221,107,32,0.1)' : 'rgba(229,62,62,0.1)'
+                              : 'transparent',
+                            padding: req.distanceKm != null ? '1px 6px' : '0',
+                            borderRadius: '100px',
+                            fontSize: '0.72rem'
+                          }}>
+                            {req.distance} {req.distanceKm != null ? '' : 'away'}
+                          </span>
+                           &nbsp;·&nbsp; {req.postedAt}
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 700 }}>

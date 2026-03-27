@@ -192,6 +192,19 @@ export default function PostRequestFlow({ onClose }) {
         if (insertError) throw insertError
       }
 
+      // Geocode the location to get lat/lng
+      let latitude = null, longitude = null
+      try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(form.location)}&limit=1`)
+        const geoData = await geoRes.json()
+        if (geoData && geoData.length > 0) {
+          latitude = parseFloat(geoData[0].lat)
+          longitude = parseFloat(geoData[0].lon)
+        }
+      } catch (geoErr) {
+        console.warn('Geocoding failed, posting without coordinates:', geoErr)
+      }
+
       const { error } = await supabase.from('jobs').insert([{
         consumer_id: user.id,
         title: form.title,
@@ -199,7 +212,9 @@ export default function PostRequestFlow({ onClose }) {
         category: form.service,
         location: form.location,
         budget: parseFloat(form.budgetMax) || parseFloat(form.budgetMin) || 0,
-        status: 'pending'
+        status: 'pending',
+        latitude,
+        longitude
       }])
 
       if (error) throw error
@@ -607,7 +622,46 @@ export default function PostRequestFlow({ onClose }) {
         <button
           className="btn btn--primary"
           disabled={isPublishing}
-          onClick={handlePublish}
+          onClick={async () => {
+            setIsPublishing(true)
+            try {
+              const { data: { user } } = await supabase.auth.getUser()
+              if (!user) throw new Error('User not found')
+
+              // Geocode the location to get lat/lng
+              let latitude = null, longitude = null
+              try {
+                const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(form.location)}&limit=1`)
+                const geoData = await geoRes.json()
+                if (geoData && geoData.length > 0) {
+                  latitude = parseFloat(geoData[0].lat)
+                  longitude = parseFloat(geoData[0].lon)
+                }
+              } catch (geoErr) {
+                console.warn('Geocoding failed, posting without coordinates:', geoErr)
+              }
+
+              const { error } = await supabase.from('jobs').insert([{
+                consumer_id: user.id,
+                title: form.title,
+                description: form.description,
+                category: form.service,
+                location: form.location,
+                budget: parseFloat(form.budgetMax) || 0,
+                status: 'pending',
+                latitude,
+                longitude
+              }])
+
+              if (error) throw error
+              setStep(6)
+            } catch (err) {
+              console.error('Error publishing job:', err)
+              alert('Failed to publish request. Please try again.')
+            } finally {
+              setIsPublishing(false)
+            }
+          }}
           style={{ fontSize: '0.85rem', background: 'linear-gradient(135deg, #dd6b20, #e53e3e)', border: 'none', fontWeight: 700, padding: '0.6rem 1.4rem', opacity: isPublishing ? 0.7 : 1 }}
         >
           <span className="material-icons" style={{ fontSize: '1rem', verticalAlign: 'middle', marginRight: '4px' }}>
