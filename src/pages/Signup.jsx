@@ -170,16 +170,16 @@ const Signup = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <h3 style={{ textAlign: 'center', marginBottom: '1rem', color: 'var(--secondary)' }}>I am joining as a...</h3>
             <button
-               // Consumer goes directly to the full form (step 4)
-              onClick={() => { setRole('consumer'); setStep(4); }}
+               // Consumer goes to email/OTP collection first (step 2)
+              onClick={() => { setRole('consumer'); setStep(2); }}
               style={{ padding: '1.5rem', background: 'var(--surface-container-high)', borderRadius: 'var(--radius-md)', fontSize: '1.1rem', fontWeight: 600, border: '2px solid transparent', color: 'var(--on-surface)' }}
               className="neon-glow-hover"
             >
               Consumer
             </button>
             <button
-               // Provider goes to email/OTP collection first (step 2)
-              onClick={() => { setRole('provider'); setStep(2); }}
+               // Provider goes directly to the full form (step 4)
+              onClick={() => { setRole('provider'); setStep(4); }}
               style={{ padding: '1.5rem', background: 'var(--surface-container-high)', borderRadius: 'var(--radius-md)', fontSize: '1.1rem', fontWeight: 600, border: '2px solid transparent', color: 'var(--on-surface)' }}
               className="neon-glow-hover"
             >
@@ -191,13 +191,13 @@ const Signup = () => {
           </div>
         )}
 
-        {step === 2 && role === 'provider' && (
+        {step === 2 && role === 'consumer' && (
           <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center' }}>
             <div style={{ marginBottom: '1rem' }}>
                <span className="material-icons" style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '0.5rem' }}>email</span>
-               <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--on-surface)' }}>Provider Verification</h3>
+               <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--on-surface)' }}>Email Verification</h3>
                <p style={{ color: 'var(--on-surface-variant)', fontSize: '0.9rem', margin: 0 }}>
-                 Please enter your work email. We will send you a one-time password to verify your address.
+                 Please enter your email. We will send you a one-time password to verify your address.
                </p>
             </div>
             <div>
@@ -207,7 +207,7 @@ const Signup = () => {
                 value={formData.email} 
                 onChange={handleChange} 
                 required 
-                placeholder="provider@example.com"
+                placeholder="consumer@example.com"
                 style={{ width: '100%', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', fontSize: '1.1rem' }} 
               />
             </div>
@@ -239,7 +239,7 @@ const Signup = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Email Address</label>
-                <input type="email" name="email" value={formData.email} onChange={handleChange} required readOnly={role === 'provider'} style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', opacity: role === 'provider' ? 0.6 : 1 }} />
+                <input type="email" name="email" value={formData.email} onChange={handleChange} required readOnly={role === 'consumer'} style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', opacity: role === 'consumer' ? 0.6 : 1 }} />
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Password</label>
@@ -349,7 +349,7 @@ const Signup = () => {
             )}
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-              <button type="button" onClick={() => role === 'provider' ? setStep(3) : setStep(1)} style={{ padding: '1rem', flex: 1, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold' }}>
+              <button type="button" onClick={() => role === 'consumer' ? setStep(3) : setStep(1)} style={{ padding: '1rem', flex: 1, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold' }}>
                 Back
               </button>
               <button type="submit" disabled={loading} style={{ padding: '1rem', flex: 2, background: 'var(--primary)', color: 'var(--on-primary)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold', fontSize: '1rem' }} className="neon-glow-hover">

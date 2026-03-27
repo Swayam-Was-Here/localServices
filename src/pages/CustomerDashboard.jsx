@@ -5,7 +5,6 @@ import PostRequestFlow from '../components/PostRequestFlow'
 import CustomerJobsFlow from '../components/CustomerJobsFlow'
 import UserProfile from '../components/UserProfile'
 import { supabase } from '../utils/supabaseClient'
-import { useEffect } from 'react'
 
 const generateMockData = () => {
   const roles = [
