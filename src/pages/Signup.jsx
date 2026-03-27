@@ -2,10 +2,6 @@ import { useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import { getCurrentLocation } from '../utils/locationService';
-import FaceVerification from '../components/FaceVerification';
-import { loadModels, extractEmbeddingFromImage, calculateSimilarity } from '../utils/faceService';
-
-
 
 const Signup = () => {
   const [role, setRole] = useState(null); // 'consumer' | 'provider'
@@ -13,27 +9,14 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-<<<<<<< HEAD
-  const [showFaceVerification, setShowFaceVerification] = useState(false);
-  const [faceData, setFaceData] = useState(null); // { embedding, photo, similarity }
-  const [uploadedEmbedding, setUploadedEmbedding] = useState(null);
-  const [uploadStatus, setUploadStatus] = useState(null); // 'processing', 'success', 'error'
 
-
-  
   const navigate = useNavigate();
-=======
-   const [otp, setOtp] = useState(['', '', '', '', '', '']);
-   const [generatedOtp, setGeneratedOtp] = useState('');
-   const [showExistenceWarning, setShowExistenceWarning] = useState(false);
-   
-   const navigate = useNavigate();
->>>>>>> 27663e40e86af2d7779c099b405618f0a32342b7
 
   // Form State
   const [formData, setFormData] = useState({
     name: '', email: '', phone: '', password: '', confirmPassword: '',
-    country: '', state: '', city: '', town_village: '', pin: '', address: ''
+    country: '', state: '', city: '', town_village: '', pin: '', address: '',
+    service_name: '', custom_service_name: ''
   });
 
   // Files State for Providers
@@ -46,34 +29,7 @@ const Signup = () => {
   const handleFileChange = (e) => {
     const { name, files: selectedFiles } = e.target;
     setFiles({ ...files, [name]: selectedFiles[0] });
-
-    if (name === 'photo' && selectedFiles[0]) {
-      handleUploadedPhoto(selectedFiles[0]);
-    }
   };
-
-  const handleUploadedPhoto = async (file) => {
-    setUploadStatus('processing');
-    try {
-      await loadModels(); // ensure models are loaded
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(file);
-      img.onload = async () => {
-        const embedding = await extractEmbeddingFromImage(img);
-        if (embedding) {
-          setUploadedEmbedding(embedding);
-          setUploadStatus('success');
-        } else {
-          setUploadStatus('error');
-          setError("No face detected in the uploaded photo. Please try a clearer image.");
-        }
-      };
-    } catch (err) {
-      setUploadStatus('error');
-      console.error(err);
-    }
-  };
-
 
   const handleGetLocation = async () => {
     try {
@@ -91,7 +47,6 @@ const Signup = () => {
     return supabase.storage.from('provider_documents').getPublicUrl(path).data.publicUrl;
   };
 
-  // Stage 1: Register User Directly (No OTP)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
@@ -100,157 +55,39 @@ const Signup = () => {
     setLoading(true);
     setError(null);
 
-    // 1. Validate Form First
-    if (role === 'provider' && (!files.aadhar || !files.pan || !files.photo)) {
-      setError("Please upload all provider documents.");
-      setLoading(false);
-      return;
-    }
-
-    // 2. Check if user already exists in our system (consumers or service_providers)
     try {
-<<<<<<< HEAD
       // 1. Sign up user via Supabase Auth
-=======
-      const table = role === 'consumer' ? 'consumers' : 'service_providers';
-      const { data: existing, error: checkError } = await supabase
-        .from(table)
-        .select('id')
-        .eq('email', formData.email)
-        .single();
-
-      if (existing) {
-        setShowExistenceWarning(true);
-        setError(`An account with this email already exists as a ${role}.`);
-        setLoading(false);
-        return;
-      }
-    } catch (err) {
-      // If error is not a 'not found', it might be a real system error
-      if (err.code !== 'PGRST116') { // PGRST116 = no rows found
-        console.error("Check existing error:", err);
-      }
-    }
-
-    try {
-      // 3. Generate a 6 digit code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(code);
-      
-      // 3. Send that code via our Node.js server
-      const response = await fetch('http://localhost:5000/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, otp: code }),
-      });
-
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.message || 'Error sending email');
-      }
-
-      // 4. Move to OTP step without registering the user yet
-      setStep(3);
-    } catch (err) {
-      setError(err.message || 'Failed to send OTP email. Please ensure the server is running.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOtpChange = (element, index) => {
-    if (isNaN(element.value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = element.value;
-    setOtp(newOtp);
-
-    // Focus next input
-    if (element.nextSibling && element.value) {
-      element.nextSibling.focus();
-    }
-  };
-
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    const enteredOtp = otp.join('');
-    if (enteredOtp !== generatedOtp) {
-      setError("Incorrect OTP. Please try again.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // 1. Sign up user via Auth now that OTP is verified
->>>>>>> 27663e40e86af2d7779c099b405618f0a32342b7
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
       });
 
       if (authError) throw authError;
-      
+
       const userId = authData.user.id;
       let aadhar_url = '', pan_url = '', photo_url = '';
 
-<<<<<<< HEAD
-      // 2. Upload documents securely if provider
-=======
-      // 2. Upload documents and create profiles
->>>>>>> 27663e40e86af2d7779c099b405618f0a32342b7
       if (role === 'provider') {
-        if (!faceData) {
-          throw new Error("Live face verification is required for service providers.");
-        }
-        
-        if (faceData.similarity < 70) {
-          throw new Error("Identity match failed. The uploaded photo and live scan do not appear to be the same person.");
-        }
-
-
         if (files.aadhar) aadhar_url = await uploadFile(files.aadhar, `${userId}/aadhar_${files.aadhar.name}`);
         if (files.pan) pan_url = await uploadFile(files.pan, `${userId}/pan_${files.pan.name}`);
-        
-<<<<<<< HEAD
-        // Use the photo from face verification
-        const facePhotoFile = await (await fetch(faceData.photo)).blob();
-        photo_url = await uploadFile(facePhotoFile, `${userId}/face_verified.jpg`);
-        
-        // 3a. Insert into service_providers
-=======
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: userId, name: formData.name, role: 'provider'
-        });
-        if (profileError) throw profileError;
+        if (files.photo) photo_url = await uploadFile(files.photo, `${userId}/photo_${files.photo.name}`);
 
->>>>>>> 27663e40e86af2d7779c099b405618f0a32342b7
+        const finalServiceName = formData.service_name === 'Other' ? formData.custom_service_name : formData.service_name;
+
         const { error: dbError } = await supabase.from('service_providers').insert({
           id: userId,
           name: formData.name, email: formData.email, phone: formData.phone,
           country: formData.country, state: formData.state, city: formData.city,
           address: formData.address,
+          service_name: finalServiceName,
           aadhar_url, pan_url, photo_url,
-          face_embedding: faceData.embedding,
-          is_face_verified: true,
           status: 'pending'
         });
 
         if (dbError) throw dbError;
 
-<<<<<<< HEAD
         setSuccessMsg("Welcome to Local Services! We are reviewing your profile and will contact you shortly. Thank you.");
       } else {
-        // 3b. Insert into consumers
-=======
-        setSuccessMsg("Registration successful! Your provider profile is pending review.");
-      } else {
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: userId, name: formData.name, role: 'client'
-        });
-        if (profileError) throw profileError;
-
->>>>>>> 27663e40e86af2d7779c099b405618f0a32342b7
         const { error: dbError } = await supabase.from('consumers').insert({
           id: userId,
           name: formData.name, email: formData.email, phone: formData.phone,
@@ -259,18 +96,8 @@ const Signup = () => {
         });
         if (dbError) throw dbError;
 
-<<<<<<< HEAD
         setSuccessMsg("Congratulations, your registration is complete! Navigating to login...");
         setTimeout(() => navigate('/login'), 3500);
-=======
-        setSuccessMsg(`Welcome ${role === 'consumer' ? 'Consumer' : 'Provider'}! Redirecting to your dashboard...`);
-
-        // 3. Log them in directly or redirect to dashboard
-        setTimeout(() => {
-          if (role === 'provider') navigate('/provider-dashboard');
-          else navigate('/dashboard');
-        }, 3000);
->>>>>>> 27663e40e86af2d7779c099b405618f0a32342b7
       }
     } catch (err) {
       setError(err.message);
@@ -278,8 +105,6 @@ const Signup = () => {
       setLoading(false);
     }
   };
-
-
 
   if (successMsg) {
     return (
@@ -296,32 +121,22 @@ const Signup = () => {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
       <div className="glass-card custom-scrollbar" style={{ padding: '2.5rem', width: '100%', maxWidth: '650px', borderRadius: 'var(--radius-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
         <h2 style={{ textAlign: 'center', marginBottom: '2rem', color: 'var(--primary)' }}>
-          {step === 3 ? 'Check Your Email' : 'Create Account'}
+          Create Account
         </h2>
-        
-         {error && (
-           <div style={{ color: 'var(--error)', marginBottom: '1.5rem', textAlign: 'center', padding: '1rem', background: '#ffe4e6', borderRadius: 'var(--radius-sm)', fontWeight: 500 }}>
-             {error}
-             {showExistenceWarning && (
-               <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                 <button type="button" onClick={() => navigate('/login')} style={{ background: 'var(--primary)', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '0.86rem' }}>Log in Instead</button>
-                 <button type="button" onClick={() => { setShowExistenceWarning(false); setError(null); }} style={{ background: '#64748b', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '0.86rem' }}>Try Different Email</button>
-               </div>
-             )}
-           </div>
-         )}
+
+        {error && <div style={{ color: 'var(--error)', marginBottom: '1.5rem', textAlign: 'center', padding: '1rem', background: '#ffe4e6', borderRadius: 'var(--radius-sm)', fontWeight: 500 }}>{error}</div>}
 
         {step === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <h3 style={{ textAlign: 'center', marginBottom: '1rem', color: 'var(--secondary)' }}>I am joining as a...</h3>
-            <button 
+            <button
               onClick={() => { setRole('consumer'); setStep(2); }}
               style={{ padding: '1.5rem', background: 'var(--surface-container-high)', borderRadius: 'var(--radius-md)', fontSize: '1.1rem', fontWeight: 600, border: '2px solid transparent', color: 'var(--on-surface)' }}
               className="neon-glow-hover"
             >
               Consumer
             </button>
-            <button 
+            <button
               onClick={() => { setRole('provider'); setStep(2); }}
               style={{ padding: '1.5rem', background: 'var(--surface-container-high)', borderRadius: 'var(--radius-md)', fontSize: '1.1rem', fontWeight: 600, border: '2px solid transparent', color: 'var(--on-surface)' }}
               className="neon-glow-hover"
@@ -336,7 +151,7 @@ const Signup = () => {
 
         {step === 2 && (
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Full Name</label>
@@ -349,16 +164,16 @@ const Signup = () => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Email Address</label>
-                  <input type="email" name="email" value={formData.email} onChange={handleChange} required style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Password</label>
-                  <input type="password" name="password" value={formData.password} onChange={handleChange} required minLength={6} style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
-                </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Email Address</label>
+                <input type="email" name="email" value={formData.email} onChange={handleChange} required style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Password</label>
+                <input type="password" name="password" value={formData.password} onChange={handleChange} required minLength={6} style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
+              </div>
             </div>
-            
+
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Confirm Password</label>
               <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} required minLength={6} style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
@@ -371,7 +186,6 @@ const Signup = () => {
                   📍 Current Location
                 </button>
               </div>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                 <input type="text" name="country" placeholder="Country" value={formData.country} onChange={handleChange} required style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
                 <input type="text" name="state" placeholder="State/Region" value={formData.state} onChange={handleChange} required style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }} />
@@ -398,7 +212,51 @@ const Signup = () => {
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Full Operating Address</label>
                   <textarea name="address" value={formData.address} onChange={handleChange} required rows={2} style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', resize: 'vertical' }} />
                 </div>
-                
+
+                <div style={{ padding: '1.25rem', background: 'var(--surface-container)', borderRadius: 'var(--radius-md)' }}>
+                  <h4 style={{ margin: 0, color: 'var(--primary)', marginBottom: '1rem' }}>Service Details</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.9rem' }}>Specific Service Name</label>
+                      <select 
+                        name="service_name" 
+                        value={formData.service_name} 
+                        onChange={handleChange} 
+                        required 
+                        style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', background: '#fff' }}
+                      >
+                        <option value="" disabled>Select your core service</option>
+                        <option value="Plumbing Repair & Maintenance">Plumbing Repair & Maintenance</option>
+                        <option value="Electrical Installation & Repair">Electrical Installation & Repair</option>
+                        <option value="AC Servicing & Gas Refill">AC Servicing & Gas Refill</option>
+                        <option value="Carpentry & Furniture Assembly">Carpentry & Furniture Assembly</option>
+                        <option value="House Cleaning & Deep Cleaning">House Cleaning & Deep Cleaning</option>
+                        <option value="Painting & Wall Decor">Painting & Wall Decor</option>
+                        <option value="RO Water Purifier Repair">RO Water Purifier Repair</option>
+                        <option value="Refrigerator Repair">Refrigerator Repair</option>
+                        <option value="Washing Machine Repair">Washing Machine Repair</option>
+                        <option value="Pest Control Services">Pest Control Services</option>
+                        <option value="Other">Other (Specify below)</option>
+                      </select>
+                    </div>
+
+                    {formData.service_name === 'Other' && (
+                      <div className="fade-in">
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.9rem' }}>Custom Service Name</label>
+                        <input 
+                          type="text" 
+                          name="custom_service_name" 
+                          placeholder="E.g., Custom Aquarium Maintenance" 
+                          value={formData.custom_service_name} 
+                          onChange={handleChange} 
+                          required={formData.service_name === 'Other'} 
+                          style={{ width: '100%', padding: '0.875rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--primary)', outline: 'none', background: '#fff' }} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', background: 'var(--surface-container)', borderRadius: 'var(--radius-md)' }}>
                   <h4 style={{ margin: 0, color: 'var(--primary)' }}>Verification Documents</h4>
                   <div>
@@ -409,47 +267,11 @@ const Signup = () => {
                     <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: 600 }}>PAN Card Image</label>
                     <input type="file" name="pan" accept="image/*,.pdf" onChange={handleFileChange} required style={{ width: '100%' }} />
                   </div>
-                  
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', fontWeight: 600 }}>Identity Verification</label>
-                    {!faceData ? (
-                      <button 
-                        type="button" 
-                        onClick={() => setShowFaceVerification(true)}
-                        style={{ width: '100%', padding: '0.75rem', background: 'var(--tertiary)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: 'bold', cursor: 'pointer' }}
-                      >
-                        Start Face Verification & Photo Capture
-                      </button>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: 'var(--radius-sm)', border: '1px solid #10b981' }}>
-                        <img src={faceData.photo} alt="Verified Face" style={{ width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover' }} />
-                        <div>
-                          <span style={{ color: '#059669', fontWeight: 600, fontSize: '0.9rem', display: 'block' }}>✅ Face Verified Successfully</span>
-                          <span style={{ fontSize: '0.75rem', color: '#059669' }}>Match Score: {Math.round(faceData.similarity)}%</span>
-                        </div>
-                        <button type="button" onClick={() => setShowFaceVerification(true)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--primary)', textDecoration: 'underline', fontSize: '0.8rem' }}>Retake</button>
-                      </div>
-
-                    )}
-                  </div>
-
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.5rem', fontWeight: 600 }}>Registration Photo (for Comparison)</label>
-                    <input 
-                      type="file" 
-                      name="photo" 
-                      accept="image/*" 
-                      onChange={handleFileChange} 
-                      required 
-                      style={{ width: '100%' }} 
-                    />
-                    {uploadStatus === 'processing' && <p style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>Analyzing photo...</p>}
-                    {uploadStatus === 'success' && <p style={{ fontSize: '0.8rem', color: '#10b981' }}>✅ Photo analysis complete. You can now start live verification.</p>}
-                    {uploadStatus === 'error' && <p style={{ fontSize: '0.8rem', color: 'var(--error)' }}>❌ Could not detect a face. Please use a clearer photo.</p>}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: 600 }}>Profile Photo</label>
+                    <input type="file" name="photo" accept="image/*" onChange={handleFileChange} required style={{ width: '100%' }} />
                   </div>
                 </div>
-
-
               </>
             )}
 
@@ -463,84 +285,8 @@ const Signup = () => {
             </div>
           </form>
         )}
-
-        {step === 3 && (
-          <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <h3 style={{ textAlign: 'center', marginBottom: '1rem', color: 'var(--primary)' }}>Verify Your Email</h3>
-            <p style={{ textAlign: 'center', color: 'var(--secondary)' }}>
-              We have sent an OTP to <strong>{formData.email}</strong>. Please enter it below to verify your account.
-            </p>
-            
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
-              {otp.map((data, index) => (
-                <input
-                  key={index}
-                  type="text"
-                  maxLength="1"
-                  value={data}
-                  onChange={(e) => handleOtpChange(e.target, index)}
-                  onFocus={(e) => e.target.select()}
-                  style={{
-                    width: '3rem', height: '3.5rem', textAlign: 'center', fontSize: '1.5rem',
-                    borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)',
-                    background: 'var(--surface-container)', color: 'var(--on-surface)'
-                  }}
-                  required
-                />
-              ))}
-            </div>
-
-            <button type="submit" disabled={loading} style={{ marginTop: '1rem', padding: '1rem', background: 'var(--primary)', color: 'var(--on-primary)', borderRadius: 'var(--radius-sm)', fontWeight: 'bold', fontSize: '1rem' }} className="neon-glow-hover">
-              {loading ? 'Verifying...' : 'Verify OTP'}
-            </button>
-            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-               <button type="button" onClick={async () => {
-                 setLoading(true);
-                 setError(null);
-                 const code = Math.floor(100000 + Math.random() * 900000).toString();
-                 setGeneratedOtp(code);
-                 
-                 try {
-                   const response = await fetch('http://localhost:5000/send-otp', {
-                     method: 'POST',
-                     headers: { 'Content-Type': 'application/json' },
-                     body: JSON.stringify({ email: formData.email, otp: code }),
-                   });
-                   const result = await response.json();
-                   if (result.success) {
-                     alert("OTP resent to your email.");
-                   } else {
-                     setError(result.message);
-                   }
-                 } catch (err) {
-                   setError("Failed to resend OTP. Is the email server running?");
-                 } finally {
-                   setLoading(false);
-                 }
-               }} style={{ background: 'none', border: 'none', color: 'var(--tertiary)', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold' }}>
-                 Resend OTP
-               </button>
-            </div>
-          </form>
-        )}
       </div>
-
-      {showFaceVerification && (
-        <FaceVerification 
-          onVerified={(data) => {
-            let similarity = 100;
-            if (uploadedEmbedding) {
-              similarity = calculateSimilarity(data.embedding, uploadedEmbedding);
-            }
-            setFaceData({ ...data, similarity });
-            setShowFaceVerification(false);
-          }}
-          onCancel={() => setShowFaceVerification(false)}
-        />
-      )}
-
     </div>
-
   );
 };
 

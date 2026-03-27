@@ -1,87 +1,138 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../utils/supabaseClient'
+
+const JOB_TITLE = 'Plumbing Repair & Pipe Fixing'
+const CUSTOMER_NAME = 'You'
+
+async function sendBidAcceptedEmail(provider) {
+  try {
+    await fetch('http://localhost:5000/send-bid-accepted', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerEmail: provider.email,
+        providerName:  provider.name,
+        jobTitle:      JOB_TITLE,
+        customerName:  CUSTOMER_NAME,
+        amount:        provider.hourly_rate ?? 'N/A',
+      }),
+    })
+  } catch (err) {
+    console.error('Failed to send bid-accepted email:', err)
+  }
+}
 
 export default function CustomerJobsFlow() {
   const navigate = useNavigate()
-  const [view, setView] = useState('bids') // bids -> bid_details -> payment -> tracking -> profile -> feedback -> success
+  const [view, setView] = useState('bids')
+  const [selectedBid, setSelectedBid] = useState(null)
   const [feedbackText, setFeedbackText] = useState('')
   const [rating, setRating] = useState(4)
+  const [emailSent, setEmailSent] = useState(false)
+  const [providers, setProviders] = useState([])
+  const [loadingProviders, setLoadingProviders] = useState(true)
+
+  useEffect(() => {
+    async function fetchProviders() {
+      setLoadingProviders(true)
+      const { data, error } = await supabase
+        .from('service_providers')
+        .select('id, name, email, phone, trust_score, hourly_rate, categories, photo_url, city, state')
+        .eq('status', 'approved')
+      if (error) {
+        console.error('Error fetching providers:', error)
+      } else {
+        setProviders(data || [])
+      }
+      setLoadingProviders(false)
+    }
+    fetchProviders()
+  }, [])
 
   /* ── VIEW 1: BIDS RECEIVED ── */
   if (view === 'bids') {
     return (
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800 }}>🔥 3 Bids Received</h1>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800 }}>
+            {loadingProviders ? '⏳ Loading Bids...' : `🔥 ${providers.length} Bid${providers.length !== 1 ? 's' : ''} Received`}
+          </h1>
         </div>
         <p style={{ fontSize: '0.9rem', color: 'var(--on-surface-variant)', marginBottom: '2rem' }}>
           Expert professionals are ready to assist you. Review their proposals and hire the best match for your project.
         </p>
 
+        {loadingProviders && (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--on-surface-variant)' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
+            <p>Fetching available providers...</p>
+          </div>
+        )}
+
+        {!loadingProviders && providers.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '3rem', background: '#fff', borderRadius: 'var(--radius-xl)', border: '1px solid var(--outline-variant)' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔍</div>
+            <h3 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>No Approved Providers Yet</h3>
+            <p style={{ color: 'var(--on-surface-variant)', fontSize: '0.9rem' }}>There are no approved service providers available right now. Please check back later.</p>
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Bid 1 */}
-          <div style={{ background: '#fff', borderRadius: 'var(--radius-xl)', padding: '1.5rem', border: '1px solid var(--outline-variant)', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(49,130,206,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3182ce', fontWeight: 700, fontSize: '1.2rem' }}>RS</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Rahul Sharma</h3>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--primary)' }}>₹850</div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: '0.75rem', background: 'rgba(56,161,105,0.1)', color: '#38a169', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 700 }}>4.9 ★ (120 reviews)</span>
-                  <span style={{ fontSize: '0.75rem', background: 'rgba(214,158,46,0.1)', color: '#d69e2e', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 700 }}>Top Rated</span>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)', marginBottom: '1.5rem', lineHeight: 1.5, fontStyle: 'italic' }}>
-                  "Top-rated expert with 8+ years of experience in structural repairs. I am equipped with professional-grade tools and can start immediately upon acceptance."
-                </p>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }}>View Profile</button>
-                  <button className="btn btn--primary" style={{ flex: 2, padding: '0.6rem' }} onClick={() => setView('bid_details')}>Accept Proposal</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          {providers.map((provider, i) => {
+            const initials = provider.name
+              ? provider.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+              : '??'
+            const trustScore = provider.trust_score ?? 0
+            const isHighTrust = trustScore >= 8.5
+            const location = [provider.city, provider.state].filter(Boolean).join(', ')
+            const serviceLabel = provider.categories?.length > 0
+              ? provider.categories.slice(0, 2).join(' · ')
+              : 'General Services'
 
-          {/* Bid 2 */}
-          <div style={{ background: '#fff', borderRadius: 'var(--radius-xl)', padding: '1.5rem', border: '1px solid var(--outline-variant)' }}>
-            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(221,107,32,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dd6b20', fontWeight: 700, fontSize: '1.2rem' }}>AI</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Ananya Iyer</h3>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--primary)' }}>₹950</div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: '0.75rem', background: 'var(--surface-container)', color: 'var(--on-surface-variant)', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 600 }}>4.7 ★ (45 reviews)</span>
-                </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }}>View Profile</button>
-                  <button className="btn btn--primary" style={{ flex: 2, padding: '0.6rem' }} onClick={() => setView('bid_details')}>Accept Proposal</button>
-                </div>
-              </div>
-            </div>
-          </div>
+            return (
+              <div key={provider.id} style={{ background: '#fff', borderRadius: 'var(--radius-xl)', padding: '1.5rem', border: '1px solid var(--outline-variant)', boxShadow: i === 0 ? 'var(--shadow-sm)' : 'none' }}>
+                <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+                  {provider.photo_url ? (
+                    <img src={provider.photo_url} alt={provider.name} style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--outline-variant)' }} />
+                  ) : (
+                    <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(49,130,206,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3182ce', fontWeight: 700, fontSize: '1.2rem', flexShrink: 0 }}>
+                      {initials}
+                    </div>
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{provider.name}</h3>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)' }}>
+                        {provider.hourly_rate ? `₹${provider.hourly_rate}/hr` : 'Rate on request'}
+                      </div>
+                    </div>
 
-          {/* Bid 3 */}
-          <div style={{ background: '#fff', borderRadius: 'var(--radius-xl)', padding: '1.5rem', border: '1px solid var(--outline-variant)' }}>
-            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(56,161,105,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#38a169', fontWeight: 700, fontSize: '1.2rem' }}>VD</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Vikram Dass</h3>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--primary)' }}>₹700</div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <span style={{ fontSize: '0.75rem', background: 'var(--surface-container)', color: 'var(--on-surface-variant)', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 600 }}>4.8 ★ (89 reviews)</span>
-                </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }}>View Profile</button>
-                  <button className="btn btn--primary" style={{ flex: 2, padding: '0.6rem' }} onClick={() => setView('bid_details')}>Accept Proposal</button>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                      <span style={{ fontSize: '0.75rem', background: isHighTrust ? 'rgba(56,161,105,0.1)' : 'var(--surface-container)', color: isHighTrust ? '#38a169' : 'var(--on-surface-variant)', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 700 }}>
+                        ⭐ Trust Score: {trustScore}/10
+                      </span>
+                      {isHighTrust && (
+                        <span style={{ fontSize: '0.75rem', background: 'rgba(214,158,46,0.1)', color: '#d69e2e', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 700 }}>Highly Trusted</span>
+                      )}
+                      {location && (
+                        <span style={{ fontSize: '0.75rem', background: 'var(--surface-container)', color: 'var(--on-surface-variant)', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 600 }}>📍 {location}</span>
+                      )}
+                    </div>
+
+                    {serviceLabel && (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--on-surface-variant)', marginBottom: '1rem' }}>{serviceLabel}</p>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }}>View Profile</button>
+                      <button className="btn btn--primary" style={{ flex: 2, padding: '0.6rem' }} onClick={() => { setSelectedBid(provider); setView('bid_details') }}>Accept Proposal</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            )
+          })}
         </div>
       </div>
     )
@@ -181,7 +232,17 @@ export default function CustomerJobsFlow() {
           <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>256-bit Encrypted Checkout</span>
         </div>
 
-        <button className="btn btn--primary" style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }} onClick={() => setView('tracking')}>
+        <button
+          className="btn btn--primary"
+          style={{ width: '100%', padding: '1rem', fontSize: '1.1rem' }}
+          onClick={async () => {
+            if (selectedBid && !emailSent) {
+              setEmailSent(true)
+              await sendBidAcceptedEmail(selectedBid)
+            }
+            setView('tracking')
+          }}
+        >
           Confirm Secure Payment
         </button>
         <button className="btn btn--ghost" style={{ marginTop: '1rem', width: '100%' }} onClick={() => setView('bid_details')}>Cancel</button>

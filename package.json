@@ -13,15 +13,11 @@
     "@emailjs/browser": "^4.4.1",
     "@supabase/supabase-js": "^2.100.1",
     "chart.js": "^4.5.1",
-<<<<<<< HEAD
-    "face-api.js": "^0.22.2",
-    "lucide-react": "^1.7.0",
-=======
     "cors": "^2.8.6",
+    "lucide-react": "^1.7.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "nodemailer": "^8.0.4",
->>>>>>> 27663e40e86af2d7779c099b405618f0a32342b7
     "react": "^19.2.4",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.4",
