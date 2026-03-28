@@ -2,6 +2,7 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -16,6 +17,12 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 });
+
+// Supabase client for server-side queries
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || 'https://qmesmzkiybnqijuansvb.supabase.co',
+  process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtZXNtemtpeWJucWlqdWFuc3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1MjAwMjEsImV4cCI6MjA5MDA5NjAyMX0.7-nMwn6JeMQH0tFwpBqtjhy_1q7RjxIp92YY-bezX04'
+);
 
 // ── OTP Email ──────────────────────────────────────────────────────────────
 app.post('/send-otp', async (req, res) => {

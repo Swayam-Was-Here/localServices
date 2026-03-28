@@ -78,7 +78,8 @@ const SIDEBAR_LINKS = [
   { id: 'my_bids', icon: 'gavel', label: 'My Bids' },
   { id: 'availability', icon: 'event_available', label: 'Availability' },
   { id: 'earnings', icon: 'payments', label: 'Earnings' },
-  { id: 'profile', icon: 'person', label: 'Profile' },
+  { id: 'customers', icon: 'groups', label: 'Customers' },
+  { id: 'profile', icon: 'person', label: 'Profile' }
 ]
 
 function ProviderBidsView({ providerId }) {
@@ -160,49 +161,35 @@ export default function ProviderDashboard() {
   const [currentBidPrice, setCurrentBidPrice] = useState(0)
   const [liveRequests, setLiveRequests] = useState([])
   const [providerBids, setProviderBids] = useState([])
+  const [radius, setRadius] = useState(10) // 10km default
   const [providerLocation, setProviderLocation] = useState(null)
-  const [searchRadius, setSearchRadius] = useState(10) // km
-  const [isLocating, setIsLocating] = useState(false)
-  const [locationError, setLocationError] = useState(null)
+  const [promisedHours, setPromisedHours] = useState(2) // Default 2 hours
 
-  // Haversine formula to calculate distance between two coordinates in km
   const haversineDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371
-    const dLat = ((lat2 - lat1) * Math.PI) / 180
-    const dLon = ((lon2 - lon1) * Math.PI) / 180
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null
+    const R = 6371 // km
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2)
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
     return R * c
   }
 
-  // Fetch provider's live location
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation not supported')
-      return
+  const fetchProviderLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        setProviderLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude })
+      }, (err) => console.warn('Provider location permission denied', err))
     }
-    setIsLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setProviderLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        setIsLocating(false)
-      },
-      (err) => {
-        console.warn('Location permission denied:', err)
-        setLocationError('Location permission denied')
-        setIsLocating(false)
-      }
-    )
-  }, [])
+  }
 
   useEffect(() => {
     const fetchJobs = async () => {
       const { data, error } = await supabase
         .from('jobs')
-        .select('*')
+        .select('*, consumers(name, photo_url)')
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
 
@@ -226,33 +213,34 @@ export default function ProviderDashboard() {
         };
 
         const mapped = data.map(dbJob => {
-          let distKm = null
-          if (providerLocation && dbJob.latitude && dbJob.longitude) {
-            distKm = haversineDistance(providerLocation.lat, providerLocation.lng, dbJob.latitude, dbJob.longitude)
-          }
+          const dist = providerLocation ? haversineDistance(providerLocation.lat, providerLocation.lon, dbJob.latitude, dbJob.longitude) : null
+          
           return {
             id: dbJob.id,
             title: dbJob.title,
             category: dbJob.category,
             icon: fetchIcon(dbJob.category),
             color: fetchColor(dbJob.category),
-            budgetMin: dbJob.budget ? Math.max(0, dbJob.budget - 500) : 0,
-            budgetMax: dbJob.budget || 0,
-            budget: dbJob.budget,
-            distance: distKm !== null ? `${distKm.toFixed(1)} km` : 'Unknown',
-            distanceKm: distKm,
-            urgency: 'New',
+            budgetMin: dbJob.budget_min || (dbJob.budget ? Math.max(0, dbJob.budget - 500) : 0),
+            budgetMax: dbJob.budget_max || dbJob.budget || 0,
+            distance: dist ? `${dist.toFixed(1)} km` : 'Live',
+            distanceValue: dist,
+            urgency: dbJob.timeline === 'urgent' ? 'Urgent' : 'New',
             postedAt: new Date(dbJob.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
             address: dbJob.location || 'Unknown',
             description: dbJob.description || '',
-            status: dbJob.status,
-            latitude: dbJob.latitude,
-            longitude: dbJob.longitude
+            audio_url: dbJob.audio_url,
+            timeline: dbJob.timeline,
+            preferred_date: dbJob.preferred_date ? new Date(dbJob.preferred_date).toLocaleDateString() : 'ASAP',
+            customerName: dbJob.consumers?.name || 'Customer',
+            customerPhoto: dbJob.consumers?.photo_url
           }
         });
         setLiveRequests(mapped);
       }
     };
+
+    fetchProviderLocation();
 
     const fetchMyBids = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -273,7 +261,7 @@ export default function ProviderDashboard() {
     fetchMyBids();
 
     const subscription = supabase.channel('public:jobs_and_bids')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'jobs' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, () => {
         fetchJobs();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bids' }, () => {
@@ -284,20 +272,21 @@ export default function ProviderDashboard() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [providerLocation]);
+  }, [providerLocation]); // Refetch with distance if location updates
 
-  // Filter requests: show all if no location, filter by radius if location is available
-  const filteredRequests = liveRequests.filter(r => {
-    if (!providerLocation) return true // show all if no provider location
-    if (r.distanceKm === null) return true // show if request has no coordinates
-    return r.distanceKm <= searchRadius
+  const visibleRequests = [...liveRequests, ...MOCK_REQUESTS].filter(r => {
+    if (declinedJobs.has(r.id)) return false
+    if (providerLocation && r.distanceValue !== undefined && r.distanceValue !== null) {
+      return r.distanceValue <= radius
+    }
+    return true
   })
-
-  const visibleRequests = [...filteredRequests, ...MOCK_REQUESTS].filter(r => !declinedJobs.has(r.id))
-
 
   return (
     <div className="dashboard-layout">
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
       {/* Sidebar */}
       <aside className="dashboard-sidebar">
         <div className="navbar__logo" style={{ marginBottom: '2rem' }}>
@@ -455,14 +444,55 @@ export default function ProviderDashboard() {
 
             {/* Nearby Requests */}
             <section className="dash-section">
-              <div className="dash-section__header">
-                <h2>Nearby Requests <span style={{
-                  background: 'rgba(221,107,32,0.12)', color: '#dd6b20',
-                  fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
-                  borderRadius: '100px', letterSpacing: '0.05em', textTransform: 'uppercase',
-                  marginLeft: '0.5rem', verticalAlign: 'middle',
-                }}>Live</span></h2>
-                <span style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)' }}>{visibleRequests.length} open</span>
+              <div className="dash-section__header" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ display: 'flex', alignItems: 'center' }}>Nearby Requests <span style={{
+                    background: 'rgba(221,107,32,0.12)', color: '#dd6b20',
+                    fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
+                    borderRadius: '100px', letterSpacing: '0.05em', textTransform: 'uppercase',
+                    marginLeft: '0.5rem', verticalAlign: 'middle',
+                  }}>Live</span></h2>
+                  
+                  {!providerLocation ? (
+                    <button 
+                      onClick={fetchProviderLocation}
+                      style={{ 
+                        display: 'flex', alignItems: 'center', gap: '0.4rem', 
+                        padding: '0.4rem 0.8rem', fontSize: '0.75rem', fontWeight: 700,
+                        background: 'var(--primary)', color: 'white', border: 'none',
+                        borderRadius: 'var(--radius-md)', cursor: 'pointer'
+                      }}
+                    >
+                      <span className="material-icons" style={{ fontSize: '1rem' }}>my_location</span>
+                      Enable Geolocation
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#38a169', fontWeight: 700 }}>
+                      <span className="material-icons" style={{ fontSize: '1.1rem' }}>check_circle</span>
+                      Radius: {radius}km
+                    </div>
+                  )}
+                </div>
+
+                {providerLocation && (
+                  <div style={{ 
+                    background: 'var(--surface-container-low)', padding: '1rem', 
+                    borderRadius: 'var(--radius-md)', border: '1px solid var(--outline-variant)' 
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--on-surface-variant)' }}>Filter by proximity</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>{radius} km</span>
+                    </div>
+                    <input 
+                      type="range" min="1" max="50" value={radius} 
+                      onChange={(e) => setRadius(parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--on-surface-variant)', marginTop: '0.4rem' }}>
+                      <span>1km</span><span>50km</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Location & Radius Filter Bar */}
@@ -608,12 +638,18 @@ export default function ProviderDashboard() {
                         </div>
                         <p style={{ fontSize: '0.78rem', color: 'var(--on-surface-variant)', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
                           <span className="material-icons" style={{ fontSize: '0.8rem', verticalAlign: 'middle', marginRight: '2px' }}>location_on</span>
-                          {req.address} &nbsp;·&nbsp; {req.distance} away &nbsp;·&nbsp; {new Date(req.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                          {req.address} &nbsp;·&nbsp; 
+                          <span style={{ 
+                            color: req.distanceValue <= 3 ? '#38a169' : req.distanceValue <= 10 ? '#dd6b20' : 'var(--on-surface-variant)',
+                            fontWeight: 700
+                          }}>
+                            {req.distance} away
+                          </span> &nbsp;·&nbsp; {req.postedAt}
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 700 }}>
-                            ₹{(req.budget || 0).toLocaleString()}
-                            <span style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', fontWeight: 400, marginLeft: '4px' }}>Estimated Budget</span>
+                            ₹{req.budgetMin?.toLocaleString()} — ₹{req.budgetMax?.toLocaleString()}
+                            <span style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', fontWeight: 400, marginLeft: '6px' }}>Budget Range</span>
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
                             <button
@@ -870,8 +906,8 @@ export default function ProviderDashboard() {
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
                     <div style={{ background: 'var(--surface-container-low)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: '0.4rem' }}>Budget</div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)' }}>₹{selectedRequest.budget || 0}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: '0.4rem' }}>Budget Range</div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)' }}>₹{selectedRequest.budgetMin} — ₹{selectedRequest.budgetMax}</div>
                     </div>
                     <div style={{ background: 'var(--surface-container-low)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
                       <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: '0.4rem' }}>Status</div>
@@ -889,6 +925,18 @@ export default function ProviderDashboard() {
                     </p>
                   </div>
 
+                  {selectedRequest.audio_url && (
+                    <div style={{ marginBottom: '2rem', background: 'var(--surface-container-low)', padding: '1.2rem', borderRadius: 'var(--radius-lg)', border: '1px border var(--outline-variant)' }}>
+                      <h4 style={{ fontSize: '0.9rem', fontWeight: 800, marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className="material-icons" style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>mic</span>
+                        Customer Voice Note
+                      </h4>
+                      <audio controls src={selectedRequest.audio_url} style={{ width: '100%', height: '40px' }}>
+                        Your browser does not support the audio element.
+                      </audio>
+                    </div>
+                  )}
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2.5rem' }}>
                     <div>
                       <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--on-surface)', marginBottom: '0.5rem' }}>Location</h4>
@@ -898,10 +946,17 @@ export default function ProviderDashboard() {
                       </div>
                     </div>
                     <div>
-                      <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--on-surface)', marginBottom: '0.5rem' }}>Time Booked</h4>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--on-surface)', marginBottom: '0.5rem' }}>Preferred Date</h4>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--on-surface-variant)' }}>
-                        <span className="material-icons" style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>schedule</span>
-                        {new Date(selectedRequest.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        <span className="material-icons" style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>calendar_month</span>
+                        {selectedRequest.preferred_date}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--on-surface)', marginBottom: '0.5rem' }}>Urgency</h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: (selectedRequest.timeline === 'urgent' || selectedRequest.timeline === 'immediate') ? '#e53e3e' : 'var(--on-surface-variant)', fontWeight: 600 }}>
+                        <span className="material-icons" style={{ fontSize: '1.1rem' }}>{selectedRequest.timeline === 'urgent' ? 'bolt' : 'schedule'}</span>
+                        {selectedRequest.timeline?.toUpperCase() || 'NORMAL'}
                       </div>
                     </div>
                   </div>
@@ -943,27 +998,55 @@ export default function ProviderDashboard() {
                     </div>
                   </div>
 
-                  <div className="ai-suggested-card" style={{ marginBottom: '2rem', padding: '1.2rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer' }} onClick={() => setCurrentBidPrice(Math.round((selectedRequest.budget || 1000) * 0.9))}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                  <div className="ai-suggested-card" style={{ 
+                    marginBottom: '2rem', padding: '1.2rem', borderRadius: 'var(--radius-lg)', 
+                    textAlign: 'left', cursor: 'pointer', border: '1px solid var(--primary)',
+                    background: 'rgba(0,32,69,0.02)'
+                  }} onClick={() => setCurrentBidPrice(Math.round((selectedRequest.budget || 1000) * 0.95))}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.7rem' }}>
                       <span className="material-icons" style={{ color: 'var(--primary)', fontSize: '1.2rem' }}>auto_awesome</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Suggested Bid</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Smart Bidding Active</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                       <div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--on-surface)' }}>₹{Math.round((selectedRequest.budget || 1000) * 0.9)}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', marginTop: '0.2rem' }}>Based on <strong>{Math.floor(Math.random() * 10) + 5} similar jobs</strong></div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--on-surface)' }}>₹{Math.round((selectedRequest.budget || 1000) * 0.95)}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', marginTop: '0.2rem' }}>Optimized for <strong>92% win probability</strong></div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3182ce' }}>Recommended</div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--on-surface-variant)' }}>Apply this rate</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38a169', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ width: '6px', height: '6px', background: '#38a169', borderRadius: '50%' }} />
+                          Recommended
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--on-surface-variant)' }}>Tap to apply</div>
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ background: 'rgba(56, 161, 105, 0.08)', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '2rem', display: 'flex', gap: '0.8rem', alignItems: 'center', textAlign: 'left' }}>
+                  <div style={{ background: 'rgba(56, 161, 105, 0.08)', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', display: 'flex', gap: '0.8rem', alignItems: 'center', textAlign: 'left' }}>
                     <span className="material-icons" style={{ color: '#38a169' }}>info</span>
                     <p style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', lineHeight: 1.4 }}>
                       Choosing a price within the customer's budget increases your chance of winning by <strong style={{ color: '#38a169' }}>24%</strong>.
+                    </p>
+                  </div>
+
+                  <div style={{ background: 'var(--surface-container-low)', padding: '1.2rem', borderRadius: 'var(--radius-lg)', marginBottom: '2rem', border: '1px solid var(--outline-variant)' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}>
+                      <span className="material-icons" style={{ fontSize: '1.2rem' }}>schedule</span>
+                      Estimated Completion Time
+                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <input 
+                        type="number" 
+                        min="0.5" 
+                        step="0.5" 
+                        value={promisedHours} 
+                        onChange={(e) => setPromisedHours(parseFloat(e.target.value) || 0)}
+                        style={{ width: '80px', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--outline-variant)', fontWeight: 700, textAlign: 'center' }}
+                      />
+                      <span style={{ fontSize: '0.9rem', color: 'var(--on-surface-variant)', fontWeight: 600 }}>Hours to complete work</span>
+                    </div>
+                    <p style={{ fontSize: '0.7rem', color: '#e53e3e', marginTop: '0.6rem', fontWeight: 600 }}>
+                      ⚠️ Penalty applies if actual time exceeds this estimate.
                     </p>
                   </div>
 
@@ -995,7 +1078,8 @@ export default function ProviderDashboard() {
                                  job_id: selectedRequest.id,
                                  provider_id: user.id,
                                  amount: currentBidPrice,
-                                 message: 'I am ready to help you with your project effectively.'
+                                 promised_hours: promisedHours,
+                                 message: `I can complete this in approx ${promisedHours} hours.`
                                }]);
                                if (error) {
                                  console.error('Error submitting bid:', error);

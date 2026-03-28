@@ -111,55 +111,56 @@ export default function PostRequestFlow({ onClose }) {
     location: 'Sector 21, Gurgaon',
     radius: '5',
   })
+  const [audioBlob, setAudioBlob] = useState(null)
   const [search, setSearch] = useState('')
   const [isPublishing, setIsPublishing] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState(null)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false)
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
   const audioRef = useRef(null)
-  const [isLocating, setIsLocating] = useState(false)
 
-  // Audio Playback logic
   const toggleAudio = () => {
     if (!form.audio) return
     if (!audioRef.current) {
       audioRef.current = new Audio(form.audio)
-      audioRef.current.onended = () => setIsPlaying(false)
+      audioRef.current.onended = () => setIsPlayingAudio(false)
     }
     
-    if (isPlaying) {
+    if (isPlayingAudio) {
       audioRef.current.pause()
-      setIsPlaying(false)
+      setIsPlayingAudio(false)
     } else {
       audioRef.current.play()
-      setIsPlaying(false) // Trigger re-render if needed or use state
-      setIsPlaying(true)
+      setIsPlayingAudio(true)
     }
   }
 
-  const fetchCurrentLocation = () => {
+  const fetchLocation = () => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser")
       return
     }
-    setIsLocating(true)
+
+    setIsFetchingLocation(true)
     navigator.geolocation.getCurrentPosition(async (position) => {
-      const { latitude, longitude } = position.coords
       try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
-        const data = await response.json()
-        const address = data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-        update('location', address)
+        const { latitude, longitude } = position.coords
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+        const data = await res.json()
+        if (data && data.display_name) {
+          update('location', data.display_name)
+        }
       } catch (err) {
-        console.error("Geocoding error", err)
-        update('location', `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
+        console.error("Reverse geocoding failed", err)
+        alert("Could not determine address. Please enter it manually.")
       } finally {
-        setIsLocating(false)
+        setIsFetchingLocation(false)
       }
     }, (err) => {
-      console.error("Location error", err)
-      alert("Unable to retrieve your location. Please check permissions.")
-      setIsLocating(false)
+      console.error("Geolocation error", err)
+      setIsFetchingLocation(false)
+      alert("Location access denied or unavailable.")
     })
   }
 
@@ -167,61 +168,77 @@ export default function PostRequestFlow({ onClose }) {
     setIsPublishing(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        alert('You must be logged in to post a request.')
-        return
-      }
+      if (!user) throw new Error('User not found. Please log in again.')
 
-      // First, ensure the user exists in the consumers table
-      // (This is a safety check because auth.uid() might not be in consumers yet in some edge cases)
+      // 1. Ensure the user exists in the consumers table (Foreign Key safety)
       const { data: consumer, error: fetchError } = await supabase
         .from('consumers')
         .select('id')
         .eq('id', user.id)
         .single()
 
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        throw fetchError
-      }
+      if (fetchError && fetchError.code !== 'PGRST116') throw fetchError
 
       if (!consumer) {
-        // Create consumer profile if it doesn't exist
         const { error: insertError } = await supabase
           .from('consumers')
           .insert([{ id: user.id, name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Customer', email: user.email }])
         if (insertError) throw insertError
       }
 
-      // Geocode the location to get lat/lng
-      let latitude = null, longitude = null
+      // 2. Geocoding
+      let lat = null, lon = null
       try {
         const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(form.location)}&limit=1`)
         const geoData = await geoRes.json()
         if (geoData && geoData.length > 0) {
-          latitude = parseFloat(geoData[0].lat)
-          longitude = parseFloat(geoData[0].lon)
+          lat = parseFloat(geoData[0].lat)
+          lon = parseFloat(geoData[0].lon)
         }
-      } catch (geoErr) {
-        console.warn('Geocoding failed, posting without coordinates:', geoErr)
+      } catch (err) { console.warn('Geocoding failed:', err) }
+
+      // 3. Audio Upload
+      let finalAudioUrl = null
+      if (audioBlob) {
+        const fileName = `${user.id}/${Date.now()}-audio.webm`
+        const { error: uploadError } = await supabase.storage
+          .from('job_media')
+          .upload(fileName, audioBlob)
+        
+        if (!uploadError) {
+           const { data: { publicUrl } } = supabase.storage
+             .from('job_media')
+             .getPublicUrl(fileName)
+           finalAudioUrl = publicUrl
+        } else {
+           console.error('Audio upload failed:', uploadError)
+        }
       }
 
+      // 4. Insert Job
       const { error } = await supabase.from('jobs').insert([{
         consumer_id: user.id,
         title: form.title,
         description: form.description,
         category: form.service,
         location: form.location,
-        budget: parseFloat(form.budgetMax) || parseFloat(form.budgetMin) || 0,
-        status: 'pending',
-        latitude,
-        longitude
+        latitude: lat,
+        longitude: lon,
+        budget: parseFloat(form.budgetMax) || 0,
+        budget_min: parseFloat(form.budgetMin) || 0,
+        budget_max: parseFloat(form.budgetMax) || 0,
+        timeline: form.timeline,
+        preferred_date: form.date || null,
+        radius: parseFloat(form.radius) || 5,
+        audio_url: finalAudioUrl,
+        status: 'pending'
       }])
 
       if (error) throw error
       setStep(6)
     } catch (err) {
       console.error('Error publishing job:', err)
-      alert('Failed to publish job: ' + err.message)
+      alert('Failed to publish request: ' + err.message)
     } finally {
       setIsPublishing(false)
     }
@@ -238,8 +255,9 @@ export default function PostRequestFlow({ onClose }) {
         if (e.data.size > 0) chunks.push(e.data)
       }
       recorder.onstop = () => {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' })
-        const audioUrl = URL.createObjectURL(audioBlob)
+        const blob = new Blob(chunks, { type: 'audio/webm' })
+        const audioUrl = URL.createObjectURL(blob)
+        setAudioBlob(blob)
         update('audio', audioUrl)
       }
       recorder.start()
@@ -413,19 +431,35 @@ export default function PostRequestFlow({ onClose }) {
                 {isRecording ? 'Recording...' : isPlaying ? 'Playing Audio' : form.audio ? 'Tap to Preview' : 'Tap to record'}
               </span>
             </div>
+            {form.audio && <span className="material-icons" style={{ position: 'absolute', top: '8px', right: '8px', fontSize: '1.2rem', color: '#e53e3e', cursor: 'pointer', zIndex: 10 }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); update('audio', false); if(audioRef.current) { audioRef.current.pause(); audioRef.current = null; setIsPlayingAudio(false); } }}>cancel</span>}
             {form.audio && (
-              <span 
-                className="material-icons" 
-                style={{ position: 'absolute', top: '8px', right: '8px', fontSize: '1.2rem', color: '#e53e3e', cursor: 'pointer', background: 'white', borderRadius: '50%' }} 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  if(isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-                  update('audio', false); 
-                  audioRef.current = null;
+              <div 
+                onClick={toggleAudio}
+                style={{ 
+                  marginTop: '0.8rem', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.8rem', 
+                  padding: '0.6rem 1rem', 
+                  background: 'var(--primary-container)', 
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                  color: 'var(--primary)'
                 }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,32,69,0.12)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--primary-container)'}
               >
-                cancel
-              </span>
+                <span className="material-icons" style={{ fontSize: '1.4rem' }}>
+                  {isPlayingAudio ? 'pause_circle' : 'play_circle'}
+                </span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Preview Voice Message</span>
+                {isPlayingAudio && (
+                  <div style={{ flex: 1, height: '4px', background: 'rgba(0,32,69,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ width: '40%', height: '100%', background: 'var(--primary)', animation: 'pulse 1s infinite alternate' }} />
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -517,26 +551,24 @@ export default function PostRequestFlow({ onClose }) {
 
       <div style={{ marginBottom: '1rem' }}>
         <label style={labelStyle}>Your Address / Area *</label>
-        <div style={{ position: 'relative' }}>
-          <span className="material-icons" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--outline)', fontSize: '1.1rem' }}>location_on</span>
-          <input style={{ ...inputStyle, paddingLeft: '2.4rem', paddingRight: '6.5rem' }} placeholder="e.g. Sector 21, Gurgaon"
-            value={form.location} onChange={e => update('location', e.target.value)}
-            onFocus={e => e.target.style.borderColor = 'var(--primary)'} onBlur={e => e.target.style.borderColor = 'var(--outline-variant)'} />
-          <button 
-            type="button" 
-            onClick={fetchCurrentLocation}
-            disabled={isLocating}
-            style={{ 
-              position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)',
-              background: 'var(--primary-container)', color: 'var(--primary)', border: 'none',
-              borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.6rem', fontSize: '0.7rem',
-              fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-            }}
-          >
-            <span className="material-icons" style={{ fontSize: '0.9rem' }}>{isLocating ? 'sync' : 'my_location'}</span>
-            {isLocating ? 'Scanning...' : 'Near Me'}
-          </button>
-        </div>
+          <div style={{ position: 'relative', display: 'flex', gap: '0.5rem' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <span className="material-icons" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--outline)', fontSize: '1.1rem' }}>location_on</span>
+              <input style={{ ...inputStyle, paddingLeft: '2.4rem' }} placeholder="e.g. Sector 21, Gurgaon"
+                value={form.location} onChange={e => update('location', e.target.value)}
+                onFocus={e => e.target.style.borderColor = 'var(--primary)'} onBlur={e => e.target.style.borderColor = 'var(--outline-variant)'} />
+            </div>
+            <button 
+              className="btn"
+              onClick={fetchLocation}
+              disabled={isFetchingLocation}
+              style={{ padding: '0 0.8rem', background: 'var(--surface-container-high)', border: '1.5px solid var(--outline-variant)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <span className="material-icons" style={{ fontSize: '1.2rem', color: isFetchingLocation ? 'var(--primary)' : 'var(--on-surface-variant)', animation: isFetchingLocation ? 'spin 1s linear infinite' : 'none' }}>
+                {isFetchingLocation ? 'sync' : 'my_location'}
+              </span>
+            </button>
+          </div>
       </div>
 
       <div style={{ marginBottom: '1.2rem' }}>
@@ -622,46 +654,7 @@ export default function PostRequestFlow({ onClose }) {
         <button
           className="btn btn--primary"
           disabled={isPublishing}
-          onClick={async () => {
-            setIsPublishing(true)
-            try {
-              const { data: { user } } = await supabase.auth.getUser()
-              if (!user) throw new Error('User not found')
-
-              // Geocode the location to get lat/lng
-              let latitude = null, longitude = null
-              try {
-                const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(form.location)}&limit=1`)
-                const geoData = await geoRes.json()
-                if (geoData && geoData.length > 0) {
-                  latitude = parseFloat(geoData[0].lat)
-                  longitude = parseFloat(geoData[0].lon)
-                }
-              } catch (geoErr) {
-                console.warn('Geocoding failed, posting without coordinates:', geoErr)
-              }
-
-              const { error } = await supabase.from('jobs').insert([{
-                consumer_id: user.id,
-                title: form.title,
-                description: form.description,
-                category: form.service,
-                location: form.location,
-                budget: parseFloat(form.budgetMax) || 0,
-                status: 'pending',
-                latitude,
-                longitude
-              }])
-
-              if (error) throw error
-              setStep(6)
-            } catch (err) {
-              console.error('Error publishing job:', err)
-              alert('Failed to publish request. Please try again.')
-            } finally {
-              setIsPublishing(false)
-            }
-          }}
+    onClick={handlePublish}
           style={{ fontSize: '0.85rem', background: 'linear-gradient(135deg, #dd6b20, #e53e3e)', border: 'none', fontWeight: 700, padding: '0.6rem 1.4rem', opacity: isPublishing ? 0.7 : 1 }}
         >
           <span className="material-icons" style={{ fontSize: '1rem', verticalAlign: 'middle', marginRight: '4px' }}>
