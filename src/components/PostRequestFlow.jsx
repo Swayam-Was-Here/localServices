@@ -182,7 +182,7 @@ export default function PostRequestFlow({ onClose }) {
       if (!consumer) {
         const { error: insertError } = await supabase
           .from('consumers')
-          .insert([{ id: user.id, name: user.user_metadata?.full_name || 'Consumer' }])
+          .insert([{ id: user.id, name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Customer', email: user.email }])
         if (insertError) throw insertError
       }
 

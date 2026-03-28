@@ -141,168 +141,77 @@ app.post('/send-bid-accepted', async (req, res) => {
   }
 });
 
-// ── Start Bid Reminder Alert (called when first bid arrives) ───────────────
-app.post('/start-bid-alert', async (req, res) => {
-  const { jobId, consumerEmail, consumerName, jobTitle } = req.body;
-
-  try {
-    // Check if an alert already exists for this job
-    // Check if an alert is already active for this job
-    const { data: existing } = await supabase
-      .from('bid_email_alerts')
-      .select('id')
-      .eq('job_id', jobId)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (existing) {
-      console.log(`❕ Alert already active for job ${jobId}`);
-      return res.status(200).json({ success: true, message: 'Alert already active for this job' });
-    }
-
-    // Safely look up job and consumer info
-    let recipientEmail = consumerEmail;
-    let recipientName = consumerName;
-    let cId = null;
-
-    const { data: jobData, error: jError } = await supabase.from('jobs').select('consumer_id').eq('id', jobId).single();
-    if (jError || !jobData) {
-      console.error(`❌ Job not found for ID: ${jobId}`);
-      return res.status(404).json({ success: false, message: 'Job record not found' });
-    }
-    cId = jobData.consumer_id;
-
-    if (!recipientEmail) {
-      const { data: consumer } = await supabase.from('consumers').select('email, name').eq('id', cId).single();
-      if (consumer) {
-        recipientEmail = consumer.email;
-        recipientName = consumer.name;
-      }
-    }
-
-    if (!recipientEmail) {
-      console.error(`❌ Could not identify recipient email for job ${jobId}`);
-      return res.status(400).json({ success: false, message: 'Consumer email not found' });
-    }
-
-    // Insert or activate alert record
-    const { error: insertError } = await supabase.from('bid_email_alerts').upsert([{
-      job_id: jobId,
-      consumer_id: cId,
-      consumer_email: recipientEmail,
-      consumer_name: recipientName || 'Customer',
-      job_title: jobTitle || 'Your Request',
-      is_active: true,
-      last_sent_at: new Date().toISOString(),
-    }], { onConflict: 'job_id' });
-
-    if (insertError) throw insertError;
-
-    // Send the FIRST notification immediately to confirm things are working
-    // Pass 'isFirst' to customize the subject line for the very first notification
-    console.log(`📧 Sending initial bid alert to ${recipientEmail} for "${jobTitle}"...`);
-    await sendBidReminderEmail(recipientEmail, recipientName || 'Customer', jobTitle || 'Your Request', jobId, true);
-
-    res.status(200).json({ success: true, message: 'Bid alert initiated and first email sent' });
-  } catch (error) {
-    console.error('Start bid alert error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ── Stop Bid Reminder Alert (called when user accepts a bid) ───────────────
-app.post('/stop-bid-alert', async (req, res) => {
-  const { jobId } = req.body;
-
-  try {
-    const { error } = await supabase
-      .from('bid_email_alerts')
-      .update({ is_active: false })
-      .eq('job_id', jobId);
-
-    if (error) throw error;
-
-    console.log(`🛑 Bid alert stopped for job ${jobId}`);
-    res.status(200).json({ success: true, message: 'Bid alert stopped' });
-  } catch (error) {
-    console.error('Stop bid alert error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ── Bid Reminder Email Template ────────────────────────────────────────────
-async function sendBidReminderEmail(email, name, jobTitle, jobId, isFirst = false) {
-  // Count current bids for this job
-  const { count } = await supabase
-    .from('bids')
-    .select('*', { count: 'exact', head: true })
-    .eq('job_id', jobId)
-    .eq('status', 'pending');
-
-  const bidCount = count || 0;
-  const subject = 
-    isFirst ? `✨ Someone just placed a bid on your request! | Local Services` :
-    bidCount > 0 ? `⏰ You have ${bidCount} pending bid${bidCount !== 1 ? 's' : ''} – Review now! | Local Services` :
-    `⏰ Quick Reminder: Your request "${jobTitle}" is waiting | Local Services`;
+// ── Bid Placed Notification (to Customer) ──────────────────────────────────
+app.post('/send-bid-placed', async (req, res) => {
+  const { customerEmail, customerName, providerName, jobTitle, bidAmount } = req.body;
 
   const mailOptions = {
     from: `"Local Services" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: subject,
+    to: customerEmail,
+    subject: `💼 New Bid Received for "${jobTitle}" – Local Services`,
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;">
 
         <!-- Header -->
-        <div style="background: linear-gradient(135deg, #dd6b20 0%, #e53e3e 100%); padding: 36px 32px; text-align: center;">
-          <div style="font-size: 48px; margin-bottom: 10px;">⏰</div>
-          <h1 style="color: #ffffff; font-size: 24px; font-weight: 800; margin: 0 0 6px;">Bids Are Waiting For You!</h1>
-          <p style="color: rgba(255,255,255,0.85); font-size: 14px; margin: 0;">Don't keep your professionals waiting</p>
+        <div style="background: linear-gradient(135deg, #dd6b20 0%, #c05621 100%); padding: 40px 32px; text-align: center;">
+          <div style="font-size: 52px; margin-bottom: 12px;">💼</div>
+          <h1 style="color: #ffffff; font-size: 24px; font-weight: 800; margin: 0 0 8px;">You Have a New Bid!</h1>
+          <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin: 0;">A professional is ready to help you right now</p>
         </div>
 
         <!-- Body -->
-        <div style="padding: 32px;">
-          <p style="font-size: 16px; color: #1a202c; margin: 0 0 14px;">Hi <strong>${name}</strong> 👋</p>
-          <p style="font-size: 15px; color: #4a5568; line-height: 1.7; margin: 0 0 24px;">
-            Your service request "<strong>${jobTitle}</strong>" has received
-            <strong style="color: #dd6b20; font-size: 18px;">${bidCount}</strong> bid${bidCount !== 1 ? 's' : ''} 
-            from verified professionals. Review and accept a bid to get started!
+        <div style="padding: 36px 32px;">
+          <p style="font-size: 16px; color: #1a202c; margin: 0 0 16px;">Hi <strong>${customerName}</strong> 👋</p>
+          <p style="font-size: 15px; color: #4a5568; line-height: 1.7; margin: 0 0 28px;">
+            A verified service professional, <strong>${providerName}</strong>, has just placed a bid on your job request.
+            Log in to review their proposal and decide if you'd like to hire them!
           </p>
 
-          <!-- Urgency Card -->
-          <div style="background: rgba(221,107,32,0.06); border: 1.5px solid rgba(221,107,32,0.2); border-radius: 10px; padding: 20px; margin-bottom: 24px; text-align: center;">
-            <div style="font-size: 36px; font-weight: 800; color: #dd6b20; margin-bottom: 4px;">${bidCount}</div>
-            <div style="font-size: 13px; font-weight: 700; color: #c05621; text-transform: uppercase; letter-spacing: 0.06em;">Pending Bid${bidCount !== 1 ? 's' : ''}</div>
-            <p style="font-size: 12px; color: #a0aec0; margin: 8px 0 0;">Professionals are waiting for your response</p>
+          <!-- Job Details Card -->
+          <div style="background: #ffffff; border-radius: 10px; padding: 24px; border: 1px solid #e2e8f0; margin-bottom: 28px;">
+            <h3 style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin: 0 0 16px; font-weight: 700;">Bid Details</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 11px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-size: 14px; width: 38%;">Your Job</td>
+                <td style="padding: 11px 0; border-bottom: 1px solid #f1f5f9; font-weight: 700; color: #0f172a; font-size: 14px;">${jobTitle}</td>
+              </tr>
+              <tr>
+                <td style="padding: 11px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-size: 14px;">Provider</td>
+                <td style="padding: 11px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; color: #0f172a; font-size: 14px;">${providerName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 11px 0; color: #64748b; font-size: 14px;">Bid Amount</td>
+                <td style="padding: 11px 0; font-weight: 800; color: #dd6b20; font-size: 22px;">₹${bidAmount}</td>
+              </tr>
+            </table>
           </div>
 
-          <!-- Tips -->
-          <div style="background: #fff; border-radius: 8px; padding: 16px 20px; border: 1px solid #e2e8f0; margin-bottom: 24px;">
-            <p style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 10px;">💡 Quick Tips</p>
-            <ul style="font-size: 13px; color: #4a5568; line-height: 1.8; padding-left: 16px; margin: 0;">
-              <li>Compare bids by price, experience, and ratings</li>
-              <li>Accepting early gets you faster service</li>
-              <li>Your payment is secured in escrow until completion</li>
-            </ul>
+          <!-- Info Banner -->
+          <div style="background: rgba(221,107,32,0.07); border: 1px solid rgba(221,107,32,0.25); border-radius: 8px; padding: 16px 20px; margin-bottom: 28px;">
+            <p style="font-size: 13px; font-weight: 700; color: #c05621; margin: 0 0 4px;">⏱️ Act quickly!</p>
+            <p style="font-size: 13px; color: #7b341e; margin: 0; line-height: 1.5;">
+              Providers are in high demand. Review this bid and accept to secure your slot before they're booked by someone else.
+            </p>
           </div>
 
-          <!-- CTA -->
-          <div style="text-align: center; margin-bottom: 24px;">
+          <!-- CTA Button -->
+          <div style="text-align: center; margin-bottom: 28px;">
             <a href="http://localhost:5173/customer-dashboard"
-               style="display: inline-block; background: linear-gradient(135deg, #dd6b20, #e53e3e); color: #ffffff; padding: 15px 44px; border-radius: 8px; font-weight: 700; font-size: 15px; text-decoration: none;">
-              Review Bids Now →
+               style="display: inline-block; background: linear-gradient(135deg, #dd6b20, #c05621); color: #ffffff; padding: 15px 40px; border-radius: 8px; font-weight: 700; font-size: 15px; text-decoration: none; letter-spacing: 0.02em;">
+              Review the Bid →
             </a>
           </div>
 
-          <p style="font-size: 12px; color: #a0aec0; text-align: center; margin: 0; line-height: 1.6;">
-            We'll stop sending reminders once you accept a bid.<br/>
-            <strong style="color: #64748b;">The Local Services Team</strong>
+          <p style="font-size: 13px; color: #94a3b8; text-align: center; line-height: 1.7; margin: 0;">
+            Thank you for using Local Services!<br/>
+            <strong style="color: #64748b;">The Local Services Team</strong> 🌟
           </p>
         </div>
 
         <!-- Footer -->
-        <div style="background: #f1f5f9; padding: 14px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
-          <p style="font-size: 11px; color: #94a3b8; margin: 0;">
-            © ${new Date().getFullYear()} Local Services · Automated bid reminder
+        <div style="background: #f1f5f9; padding: 16px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+          <p style="font-size: 12px; color: #94a3b8; margin: 0;">
+            © ${new Date().getFullYear()} Local Services · You're receiving this because you posted a job request on our platform.
           </p>
         </div>
       </div>
@@ -311,72 +220,12 @@ async function sendBidReminderEmail(email, name, jobTitle, jobId, isFirst = fals
 
   try {
     await transporter.sendMail(mailOptions);
-    // Update last_sent_at
-    await supabase
-      .from('bid_email_alerts')
-      .update({ last_sent_at: new Date().toISOString() })
-      .eq('job_id', jobId)
-      .eq('is_active', true);
-    console.log(`  ✉️  Reminder sent to ${email} for "${jobTitle}"`);
+    res.status(200).json({ success: true, message: 'Bid placement notification sent to customer' });
   } catch (error) {
-    console.error(`  ❌ Failed to send reminder to ${email}:`, error.message);
+    console.error('Bid placed email error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
-}
-
-// ── Background Scheduler: Send reminders every 30 minutes ──────────────────
-const REMINDER_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-
-setInterval(async () => {
-  try {
-    const thirtyMinAgo = new Date(Date.now() - REMINDER_INTERVAL_MS).toISOString();
-
-    // Get all active alerts whose last email was sent >= 30 min ago
-    const { data: alerts, error } = await supabase
-      .from('bid_email_alerts')
-      .select('*')
-      .eq('is_active', true)
-      .lte('last_sent_at', thirtyMinAgo);
-
-    if (error) {
-      console.error('Scheduler query error:', error);
-      return;
-    }
-
-    if (!alerts || alerts.length === 0) return;
-
-    console.log(`\n🔔 [${new Date().toLocaleTimeString()}] Processing ${alerts.length} bid reminder(s)...`);
-
-    for (const alert of alerts) {
-      // Double-check the job is still pending (not accepted)
-      const { data: job } = await supabase
-        .from('jobs')
-        .select('status')
-        .eq('id', alert.job_id)
-        .single();
-
-      if (!job || job.status !== 'pending') {
-        // Job is no longer pending, deactivate the alert
-        await supabase
-          .from('bid_email_alerts')
-          .update({ is_active: false })
-          .eq('id', alert.id);
-        console.log(`  ⏹️  Auto-deactivated alert for job ${alert.job_id} (status: ${job?.status})`);
-        continue;
-      }
-
-      await sendBidReminderEmail(
-        alert.consumer_email,
-        alert.consumer_name,
-        alert.job_title,
-        alert.job_id
-      );
-    }
-  } catch (err) {
-    console.error('Scheduler error:', err);
-  }
-}, REMINDER_INTERVAL_MS);
-
-console.log('⏰ Bid reminder scheduler active (every 30 minutes)');
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -5,6 +5,7 @@ import AiBiddingSystem from '../components/AiBiddingSystem'
 import JobExecutionWallet from '../components/JobExecutionWallet'
 import '../App.css'
 import ServiceProviderProfile from '../components/ServiceProviderProfile'
+import ProviderAvailabilitySchedule from '../components/ProviderAvailabilitySchedule'
 
 const MOCK_REQUESTS = [
   {
@@ -75,6 +76,7 @@ const SIDEBAR_LINKS = [
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
   { id: 'jobs', icon: 'work', label: 'Explore Jobs' },
   { id: 'my_bids', icon: 'gavel', label: 'My Bids' },
+  { id: 'availability', icon: 'event_available', label: 'Availability' },
   { id: 'earnings', icon: 'payments', label: 'Earnings' },
   { id: 'customers', icon: 'groups', label: 'Customers' },
   { id: 'profile', icon: 'person', label: 'Profile' }
@@ -426,30 +428,17 @@ export default function ProviderDashboard() {
         {!activeJob && activeTab === 'profile' && (
           <ServiceProviderProfile isEditable={true} />
         )}
-
-        {activeTab === 'customers' && (
-           <div style={{ background: '#fff', padding: '2rem', borderRadius: 'var(--radius-xl)', border: '1px solid var(--outline-variant)' }}>
-             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>Potential Customers</h2>
-             <p style={{ color: 'var(--on-surface-variant)', marginBottom: '2rem' }}>People looking for services in your area.</p>
-             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-                {liveRequests.map(req => (
-                  <div key={req.id} style={{ padding: '1.2rem', background: 'var(--surface-container-lowest)', border: '1px solid var(--outline-variant)', borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                       <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-container)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 800 }}>
-                          {req.customerPhoto ? <img src={req.customerPhoto} style={{ width: '100%', height: '100%', borderRadius: '50%' }} /> : req.customerName?.[0]}
-                       </div>
-                       <div>
-                          <div style={{ fontWeight: 700 }}>{req.customerName}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>Active Request: {req.title}</div>
-                       </div>
-                    </div>
-                    <button className="btn btn--outline" style={{ width: '100%', fontSize: '0.85rem' }} onClick={() => { setActiveTab('jobs'); setSelectedRequest(req); }}>View Request</button>
-                  </div>
-                ))}
-             </div>
-           </div>
+        {!activeJob && activeTab === 'availability' && (
+          <div style={{ padding: '0 1rem' }}>
+            <ProviderAvailabilitySchedule />
+          </div>
         )}
-        {!activeJob && activeTab !== 'jobs' && activeTab !== 'profile' && (<div className="dashboard-grid">
+        {!activeJob && activeTab === 'my_bids' && (
+          <div style={{ padding: '0 1rem' }}>
+            <ProviderBidsView providerId={user?.id} />
+          </div>
+        )}
+        {!activeJob && activeTab !== 'jobs' && activeTab !== 'profile' && activeTab !== 'my_bids' && activeTab !== 'availability' && (<div className="dashboard-grid">
           {/* Left Column */}
           <div className="dashboard-col-left">
 
@@ -1077,6 +1066,14 @@ export default function ProviderDashboard() {
                            try {
                              const { data: { user } } = await supabase.auth.getUser();
                              if (user) {
+                               // Fetch provider's own name
+                               const { data: providerData } = await supabase
+                                 .from('service_providers')
+                                 .select('name')
+                                 .eq('id', user.id)
+                                 .maybeSingle();
+                               const providerName = providerData?.name || 'A service provider';
+
                                const { error } = await supabase.from('bids').insert([{
                                  job_id: selectedRequest.id,
                                  provider_id: user.id,
@@ -1087,15 +1084,32 @@ export default function ProviderDashboard() {
                                if (error) {
                                  console.error('Error submitting bid:', error);
                                } else {
-                                 // Try to start the bid alert for the consumer
-                                 fetch('http://localhost:5000/start-bid-alert', {
-                                   method: 'POST',
-                                   headers: { 'Content-Type': 'application/json' },
-                                   body: JSON.stringify({
-                                     jobId: selectedRequest.id,
-                                     jobTitle: selectedRequest.title
-                                   })
-                                 }).catch(err => console.warn('Bid alert start failed:', err));
+                                 // Notify the customer by email using consumers table
+                                 try {
+                                   const consumerId = selectedRequest.consumer_id;
+                                   if (consumerId) {
+                                     const { data: consumerRow } = await supabase
+                                       .from('consumers')
+                                       .select('name, email')
+                                       .eq('id', consumerId)
+                                       .maybeSingle();
+                                     if (consumerRow?.email) {
+                                       await fetch('http://localhost:5000/send-bid-placed', {
+                                         method: 'POST',
+                                         headers: { 'Content-Type': 'application/json' },
+                                         body: JSON.stringify({
+                                           customerEmail: consumerRow.email,
+                                           customerName:  consumerRow.name || 'Customer',
+                                           providerName,
+                                           jobTitle:      selectedRequest.title || selectedRequest.service || 'your job',
+                                           bidAmount:     currentBidPrice,
+                                         }),
+                                       }).catch(e => console.warn('Email notification failed:', e));
+                                     }
+                                   }
+                                 } catch (emailErr) {
+                                   console.warn('Could not send bid notification email:', emailErr);
+                                 }
                                }
                              }
                            } catch (err) {

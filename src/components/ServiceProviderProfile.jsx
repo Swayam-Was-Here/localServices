@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { supabase } from '../utils/supabaseClient'
+import React, { useState } from 'react'
+import ProviderScheduleBar from './ProviderScheduleBar'
 
 export default function ServiceProviderProfile({ provider = {}, isEditable = false }) {
   const [isSelfEditing, setIsSelfEditing] = useState(false)
@@ -304,6 +304,11 @@ export default function ServiceProviderProfile({ provider = {}, isEditable = fal
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--on-surface)' }}>{proData.rate}</div>
               )}
             </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <ProviderScheduleBar providerId={proData.id} compact />
+            </div>
+
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', fontWeight: 700, marginBottom: '0.4rem' }}>Service Radius</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>

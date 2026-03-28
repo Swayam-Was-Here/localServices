@@ -1,24 +1,35 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabaseClient'
+import ServiceProviderProfile from './ServiceProviderProfile'
 
-const CUSTOMER_NAME = 'You'
+const EMAIL_SERVER = 'http://localhost:5000'
 
-async function sendBidAcceptedEmail(provider, jobTitle) {
+// ── Email helper: bid accepted → provider gets congratulations email
+async function sendBidAcceptedEmail({ providerEmail, providerName, jobTitle, customerName, amount }) {
   try {
-    await fetch('http://localhost:5000/send-bid-accepted', {
+    const res = await fetch(`${EMAIL_SERVER}/send-bid-accepted`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        providerEmail: provider.email,
-        providerName:  provider.name,
-        jobTitle:      jobTitle,
-        customerName:  CUSTOMER_NAME,
-        amount:        provider.hourly_rate ?? 'N/A',
-      }),
+      body: JSON.stringify({ providerEmail, providerName, jobTitle, customerName, amount }),
     })
+    if (!res.ok) console.warn('Bid-accepted email server responded:', res.status)
   } catch (err) {
     console.error('Failed to send bid-accepted email:', err)
+  }
+}
+
+// ── Email helper: bid placed → customer gets notification email
+async function sendBidPlacedEmail({ customerEmail, customerName, providerName, jobTitle, bidAmount }) {
+  try {
+    const res = await fetch(`${EMAIL_SERVER}/send-bid-placed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customerEmail, customerName, providerName, jobTitle, bidAmount }),
+    })
+    if (!res.ok) console.warn('Bid-placed email server responded:', res.status)
+  } catch (err) {
+    console.error('Failed to send bid-placed email:', err)
   }
 }
 
@@ -33,8 +44,11 @@ export default function CustomerJobsFlow() {
   const [bids, setBids] = useState([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
+  const [customerName, setCustomerName] = useState('Customer')
+  const [customerEmail, setCustomerEmail] = useState('')
   const [selectedJob, setSelectedJob] = useState(null)
   const [bidCounts, setBidCounts] = useState({})
+  const [viewProfileProvider, setViewProfileProvider] = useState(null)
 
   useEffect(() => {
     let subscription;
@@ -42,20 +56,16 @@ export default function CustomerJobsFlow() {
       const { data: { user: authUser } } = await supabase.auth.getUser()
       setUser(authUser)
       if (authUser) {
-        const currentJob = await fetchJobAndBids(authUser.id)
-        
-        if (currentJob) {
-          subscription = supabase.channel(`job-bids-${currentJob.id}`)
-            .on('postgres_changes', { 
-              event: '*', 
-              schema: 'public', 
-              table: 'bids',
-              filter: `job_id=eq.${currentJob.id}`
-            }, () => {
-              fetchJobAndBids(authUser.id)
-            })
-            .subscribe()
-        }
+        // Fetch consumer profile for name + email used in email notifications
+        const { data: consumerData } = await supabase
+          .from('consumers')
+          .select('name')
+          .eq('id', authUser.id)
+          .maybeSingle()
+        if (consumerData?.name) setCustomerName(consumerData.name)
+        // Store auth email for sending
+        setCustomerEmail(authUser.email || '')
+        fetchJobAndBids(authUser.id)
       } else {
         setLoading(false)
       }
@@ -183,45 +193,33 @@ export default function CustomerJobsFlow() {
       const activeJob = jobs.find(j => j.id === bid.job_id) || selectedJob || jobs[0]
       if (!activeJob) throw new Error('Job not found')
 
-      // 1. Update bid status
+      // 1. Update bid status to accepted
       const { error: bidUpdateError } = await supabase
         .from('bids')
         .update({ status: 'accepted' })
         .eq('id', bid.id)
-      
       if (bidUpdateError) throw bidUpdateError
 
-      // 2. Update job status and set deadlines
-      const promisedHours = bid.promised_hours || 2
-      const acceptedAt = new Date().toISOString()
-      const promisedCompletionAt = new Date(Date.now() + promisedHours * 60 * 60 * 1000).toISOString()
-
+      // 2. Update job status to accepted with timestamp
       const { error: jobUpdateError } = await supabase
         .from('jobs')
-        .update({ 
-          status: 'accepted',
-          accepted_at: acceptedAt,
-          promised_completion_at: promisedCompletionAt,
-          accepted_provider_id: bid.provider_id
-        })
-        .eq('id', job.id)
-      
+        .update({ status: 'accepted', accepted_at: new Date().toISOString(), accepted_provider_id: bid.provider_id })
+        .eq('id', activeJob.id)
       if (jobUpdateError) throw jobUpdateError
 
-      // 3. Stop bid reminder emails since user accepted a bid
-      fetch('http://localhost:5000/stop-bid-alert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: job.id }),
-      }).catch(err => console.warn('Bid alert stop failed:', err))
+      // 3. Fetch provider email if not already available (handles both bid formats)
+      const providerEmail = bid.service_providers?.email || bid.provider?.email
+      const providerName  = bid.service_providers?.name  || bid.provider?.name || 'Service Provider'
 
-      // 3. Send email notification
-      if (bid.service_providers) {
-        await sendBidAcceptedEmail({
-          email: bid.service_providers.email,
-          name: bid.service_providers.name,
-          hourly_rate: bid.amount
-        }, job.title)
+      if (providerEmail) {
+        // Fire-and-forget — don't block UI on email
+        sendBidAcceptedEmail({
+          providerEmail,
+          providerName,
+          jobTitle:     activeJob.title,
+          customerName,
+          amount:       bid.amount,
+        })
       }
 
       setSelectedBid(bid)
@@ -279,6 +277,18 @@ export default function CustomerJobsFlow() {
             const location = [provider.city, provider.state].filter(Boolean).join(', ')
             const serviceLabel = provider.categories?.[0] || 'Professional Service'
 
+            // Mock Availability Data (Fixed per provider for consistency)
+            const seed = bid.provider_id ? bid.provider_id.slice(-1).charCodeAt(0) : i
+            const slots = [
+                { time: '8AM', status: (seed % 3 === 0) ? 'busy' : 'free' },
+                { time: '10AM', status: (seed % 2 === 0) ? 'busy' : 'free' },
+                { time: '12PM', status: (seed % 5 === 0) ? 'busy' : 'free' },
+                { time: '2PM', status: (seed % 4 === 0) ? 'busy' : 'free' },
+                { time: '4PM', status: 'free' },
+                { time: '6PM', status: (seed % 7 === 0) ? 'busy' : 'free' },
+                { time: '8PM', status: 'free' },
+            ]
+
             return (
               <div key={bid.id} style={{ background: '#fff', borderRadius: 'var(--radius-xl)', padding: '1.5rem', border: '1px solid var(--outline-variant)', boxShadow: i === 0 ? 'var(--shadow-sm)' : 'none' }}>
                 <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
@@ -309,7 +319,41 @@ export default function CustomerJobsFlow() {
                       )}
                     </div>
 
-                    <p style={{ fontSize: '0.82rem', color: 'var(--on-surface-variant)', marginBottom: '1rem' }}>{serviceLabel}</p>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--on-surface-variant)', marginBottom: '1.2rem' }}>{serviceLabel}</p>
+
+                    {/* Schedule Bar Section */}
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Availability Today
+                            </span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--outline)', fontWeight: 600 }}>
+                                <span style={{ color: '#3182ce' }}>●</span> Free Slots
+                            </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px', height: '12px', width: '100%', marginBottom: '0.4rem' }}>
+                            {slots.map((s, idx) => (
+                                <div key={idx} style={{
+                                    flex: 1,
+                                    background: s.status === 'free' ? 'linear-gradient(to right, #48bb78, #38a169)' : 'var(--outline-variant)',
+                                    borderRadius: '6px',
+                                    position: 'relative',
+                                    overflow: 'visible',
+                                    transition: 'transform 0.2s',
+                                    cursor: 'help'
+                                }}
+                                title={`${s.time}: ${s.status === 'free' ? 'Available' : 'Booked'}`}
+                                onMouseEnter={e => e.currentTarget.style.transform = 'scaleY(1.3)'}
+                                onMouseLeave={e => e.currentTarget.style.transform = 'scaleY(1)'}
+                                />
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 2px' }}>
+                            {slots.map((s, idx) => (
+                                <span key={idx} style={{ fontSize: '0.55rem', color: 'var(--outline)', fontWeight: 700 }}>{s.time}</span>
+                            ))}
+                        </div>
+                    </div>
 
                     <div style={{ display: 'flex', gap: '1rem' }}>
                       <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }}>View Profile</button>
@@ -331,7 +375,7 @@ export default function CustomerJobsFlow() {
         .from('bids')
         .select(`
           *,
-          provider:service_providers(id, name, role, email, trust_score)
+          provider:service_providers(*)
         `)
         .eq('job_id', jobId)
         .order('created_at', { ascending: false })
@@ -424,6 +468,7 @@ export default function CustomerJobsFlow() {
   /* ── VIEW 1: BIDS RECEIVED ── */
   if (view === 'bid_list') {
     return (
+      <>
       <div style={{ maxWidth: '800px', margin: '0 auto', animation: 'fadeIn 0.3s' }}>
         <button className="btn btn--ghost" onClick={() => setView('job_list')} style={{ marginBottom: '1.5rem', padding: '0.5rem' }}>
           <span className="material-icons" style={{ fontSize: '1rem', marginRight: '6px', verticalAlign: 'middle' }}>arrow_back</span> Back to Requests
@@ -479,8 +524,8 @@ export default function CustomerJobsFlow() {
                       "{bid.message || 'I would like to help you with this project.'}"
                     </p>
                     <div style={{ display: 'flex', gap: '1rem' }}>
-                      <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }}>View Profile</button>
-                      <button className="btn btn--primary" style={{ flex: 2, padding: '0.6rem' }} onClick={() => setView('payment')}>Accept Proposal</button>
+                      <button className="btn btn--outline" style={{ flex: 1, padding: '0.6rem' }} onClick={() => setViewProfileProvider(bid.provider)}>View Profile</button>
+                      <button className="btn btn--primary" style={{ flex: 2, padding: '0.6rem' }} onClick={() => handleAcceptBid(bid)}>Accept Proposal</button>
                     </div>
                   </div>
                 </div>
@@ -489,6 +534,39 @@ export default function CustomerJobsFlow() {
           )}
         </div>
       </div>
+      
+      {/* Profile Modal Render */}
+      {viewProfileProvider && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0, 0, 0, 0.45)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          padding: '2rem 1rem', overflowY: 'auto'
+        }}>
+          <div style={{
+            position: 'relative', width: '100%', maxWidth: '1000px',
+            background: 'var(--surface-container-lowest)', borderRadius: 'var(--radius-xl)',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.25)', animation: 'slideUp 0.3s ease-out'
+          }}>
+            <button 
+              onClick={() => setViewProfileProvider(null)}
+              style={{
+                position: 'absolute', top: '15px', right: '15px',
+                background: 'var(--surface-container-high)', border: 'none',
+                color: 'var(--on-surface-variant)', width: '36px', height: '36px',
+                borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', zIndex: 10
+              }}
+            >
+              <span className="material-icons">close</span>
+            </button>
+            <div style={{ padding: '2rem', maxHeight: '85vh', overflowY: 'auto' }}>
+              <ServiceProviderProfile provider={viewProfileProvider} isEditable={false} />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
     )
   }
 
